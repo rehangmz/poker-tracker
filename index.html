@@ -1,0 +1,949 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Poker Tracker</title>
+<meta name="description" content="Log poker sessions, see your stats and review hands.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Poker Tracker">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#F1F3EE">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0C110F">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: single-column phone app shell (max 560px), sticky bottom tab bar, bottom sheets for entry. */
+:root{
+  --bg:#F1F3EE; --surface:#FFFFFF; --surface-2:#E7EBE4; --ink:#121915; --muted:#5A665F; --line:#D7DDD5;
+  --accent:#2A42C2; --accent-ink:#FFFFFF; --accent-soft:#2A42C21A;
+  --pos:#15784A; --neg:#BE3328; --warn:#9A6200;
+  --suit-s:#121915; --suit-h:#C9302C; --suit-d:#2A62D6; --suit-c:#1C8A4E;
+  --shadow:0 10px 30px -12px #12191540;
+  --f-display:"Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --f-body:"Figtree", -apple-system, "Segoe UI", system-ui, sans-serif;
+  --f-mono:"JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --r:14px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0C110F; --surface:#141B18; --surface-2:#1B2420; --ink:#E6ECE8; --muted:#8D9B94; --line:#25302B;
+  --accent:#8D9EFF; --accent-ink:#0C110F; --accent-soft:#8D9EFF22;
+  --pos:#4BC489; --neg:#FF7A69; --warn:#E6B04B;
+  --suit-s:#E6ECE8; --suit-h:#FF6B60; --suit-d:#7FA6FF; --suit-c:#57CF8C;
+  --shadow:0 10px 30px -12px #00000099; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#0C110F; --surface:#141B18; --surface-2:#1B2420; --ink:#E6ECE8; --muted:#8D9B94; --line:#25302B;
+  --accent:#8D9EFF; --accent-ink:#0C110F; --accent-soft:#8D9EFF22;
+  --pos:#4BC489; --neg:#FF7A69; --warn:#E6B04B;
+  --suit-s:#E6ECE8; --suit-h:#FF6B60; --suit-d:#7FA6FF; --suit-c:#57CF8C;
+  --shadow:0 10px 30px -12px #00000099; color-scheme:dark }
+
+*{box-sizing:border-box}
+html{background:var(--bg);-webkit-text-size-adjust:100%;color-scheme:light}
+@media (prefers-color-scheme: dark){html{color-scheme:dark}}
+[hidden]{display:none!important}
+img{max-width:100%}
+button,a,label{-webkit-tap-highlight-color:transparent}
+.sr-file{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
+.iconbtn{background:var(--surface);border:1px solid var(--line);border-radius:11px;width:38px;height:38px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted)}
+.iconbtn svg{width:20px;height:20px}
+ol.steps{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:14px}
+ol.steps li::marker{font-family:var(--f-display);font-weight:700;color:var(--accent)}
+a.btn{text-decoration:none;color:inherit}
+a.btn.primary{color:var(--accent-ink)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.num{font-variant-numeric:tabular-nums}
+.pos{color:var(--pos)} .neg{color:var(--neg)} .muted{color:var(--muted)}
+
+.app{max-width:560px;margin:0 auto;padding-inline:16px;padding-block:calc(10px + env(safe-area-inset-top,0px)) calc(110px + env(safe-area-inset-bottom,0px))}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-block:4px 10px}
+.brand{font-family:var(--f-display);font-weight:700;font-size:15px;letter-spacing:.01em;display:flex;align-items:center;gap:8px}
+.brand .pips{font-size:13px;letter-spacing:2px}
+.eyebrow{font-size:11.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0}
+h2{font-size:20px;font-weight:700}
+h3{font-size:15px;font-weight:700}
+
+.stack{display:flex;flex-direction:column;gap:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.card-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:10px}
+.linkbtn{background:none;border:0;color:var(--accent);font-weight:600;font-size:14px;padding:4px 0}
+
+/* hero */
+.hero{padding-block:6px 4px}
+.hero .big{font-family:var(--f-display);font-weight:800;font-size:clamp(44px,13vw,64px);line-height:1;letter-spacing:-.02em;margin-top:6px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:16px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 10px 9px;min-width:0}
+.kpi b{display:block;font-family:var(--f-display);font-size:17px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi span{font-size:11.5px;color:var(--muted)}
+@media (max-width:380px){.kpis{grid-template-columns:repeat(2,1fr)}}
+
+/* live */
+.live{border-color:var(--accent);background:linear-gradient(0deg,var(--accent-soft),var(--accent-soft)),var(--surface)}
+.live-dot{width:8px;height:8px;border-radius:50%;background:var(--neg);display:inline-block;box-shadow:0 0 0 0 var(--neg);animation:pulse 1.8s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--neg) 60%,transparent)}70%{box-shadow:0 0 0 8px transparent}100%{box-shadow:0 0 0 0 transparent}}
+@media (prefers-reduced-motion:reduce){.live-dot{animation:none}}
+.live-row{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:10px}
+.live-row div{min-width:0}
+.live-row b{font-family:var(--f-display);font-size:20px;display:block}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:11px;padding:10px 14px;font-weight:600;font-size:14.5px;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:42px}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.danger{color:var(--neg);border-color:color-mix(in srgb,var(--neg) 40%,var(--line))}
+.btn.danger.solid{background:var(--neg);color:var(--surface);border-color:var(--neg)}
+.btn.block{width:100%}
+.btn:disabled{opacity:.55;cursor:default}
+
+/* session rows */
+.rows{display:flex;flex-direction:column}
+.row{display:grid;grid-template-columns:44px 1fr auto;gap:12px;align-items:center;padding:11px 2px;border-top:1px solid var(--line);background:none;border-left:0;border-right:0;border-bottom:0;text-align:left;width:100%}
+.rows .row:first-child{border-top:0}
+.date-tile{width:44px;text-align:center;line-height:1.05}
+.date-tile b{display:block;font-family:var(--f-display);font-size:19px}
+.date-tile span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.row-main{min-width:0}
+.row-main .t{font-weight:600;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.row-main .s{font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row-amt{text-align:right}
+.row-amt b{font-family:var(--f-display);font-size:16.5px;display:block}
+.row-amt span{font-size:11.5px;color:var(--muted)}
+.tag{font-size:11px;font-weight:600;padding:2px 7px;border-radius:999px;background:var(--surface-2);color:var(--muted);letter-spacing:.02em}
+.tag.t-tourn{background:var(--accent-soft);color:var(--accent)}
+.month-head{display:flex;justify-content:space-between;align-items:baseline;padding:18px 2px 4px}
+.month-head h3{font-size:16px}
+
+.chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 13px;font-size:13.5px;font-weight:600;white-space:nowrap}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;background:var(--surface-2);border-radius:11px;padding:3px;gap:3px}
+.seg button,.seg label{border:0;background:none;border-radius:9px;padding:8px 6px;font-weight:600;font-size:14px;color:var(--muted);text-align:center;cursor:pointer}
+.seg button[aria-pressed="true"],.seg input:checked+span{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px #0000001f}
+.seg label{padding:0;display:flex}
+.seg label span{flex:1;padding:8px 6px;border-radius:9px}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label:has(input:focus-visible) span{outline:2px solid var(--accent)}
+
+/* stats */
+.metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.metric{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;min-width:0}
+.metric span{font-size:12px;color:var(--muted);display:block}
+.metric b{font-family:var(--f-display);font-size:21px;font-weight:700;display:block;margin-top:2px}
+.metric.wide{grid-column:1/-1}
+.metric.wide b{font-size:34px}
+.tablewrap{overflow-x:auto;margin-inline:-4px}
+table.bk{border-collapse:collapse;width:100%;font-size:13.5px;min-width:300px}
+table.bk th,table.bk td{padding:8px 6px;text-align:right;border-top:1px solid var(--line);white-space:nowrap}
+table.bk th:first-child,table.bk td:first-child{text-align:left;color:var(--muted);font-weight:500}
+table.bk thead th{border-top:0;font-family:var(--f-display);font-weight:700;color:var(--ink)}
+table.bk thead th:first-child{color:var(--muted);font-family:var(--f-body);font-weight:500;font-size:12px}
+.foot{font-size:12.5px;color:var(--muted)}
+
+/* charts */
+.chart{position:relative}
+.chart svg{display:block;width:100%;height:auto;touch-action:pan-y}
+.chart text{font-family:var(--f-body);font-size:10px;fill:var(--muted)}
+.chart .tiptext{font-size:10.5px;fill:var(--ink);font-weight:600}
+.empty-note{color:var(--muted);font-size:14px;margin:6px 0}
+
+/* hands */
+.hand-row{display:block;width:100%;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.hand-row .meta{display:flex;justify-content:space-between;gap:8px;font-size:12.5px;color:var(--muted);align-items:center}
+.hand-row .txt{font-family:var(--f-mono);font-size:13px;margin-top:6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+.hand-row .sum{font-size:13.5px;margin-top:6px}
+.verdict{font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px;letter-spacing:.02em;white-space:nowrap}
+.v-good{background:color-mix(in srgb,var(--pos) 15%,transparent);color:var(--pos)}
+.v-close{background:color-mix(in srgb,var(--warn) 17%,transparent);color:var(--warn)}
+.v-bad{background:color-mix(in srgb,var(--neg) 15%,transparent);color:var(--neg)}
+.v-none{background:var(--surface-2);color:var(--muted)}
+.handtext{font-family:var(--f-mono);font-size:13.5px;white-space:pre-wrap;word-break:break-word;background:var(--surface-2);border-radius:10px;padding:12px;margin:0}
+.c{font-weight:700;white-space:nowrap}
+.c-s{color:var(--suit-s)} .c-h{color:var(--suit-h)} .c-d{color:var(--suit-d)} .c-c{color:var(--suit-c)}
+.verdict-banner{border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:4px}
+.verdict-banner b{font-family:var(--f-display);font-size:22px}
+.analysis h4{font-family:var(--f-display);font-size:15.5px;margin:18px 0 6px}
+.analysis p{margin:0 0 10px;max-width:65ch}
+.analysis ul{margin:0 0 10px;padding-left:20px}
+.analysis li{margin-bottom:5px}
+.thinking{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:14px}
+.spinner{width:16px;height:16px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--accent);animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spinner{animation-duration:3s}}
+.qa{border-top:1px solid var(--line);padding-top:12px;margin-top:12px}
+.qa .q{font-weight:600;margin-bottom:6px}
+.askbar{display:flex;gap:8px;margin-top:14px}
+.askbar textarea{flex:1;min-width:0}
+.back{display:inline-flex;align-items:center;gap:4px;background:none;border:0;color:var(--accent);font-weight:600;padding:4px 0;font-size:14.5px}
+
+/* forms */
+.field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.field>span{font-size:12.5px;font-weight:600;color:var(--muted)}
+.input,textarea.input{width:100%;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:11px 12px;font-size:16px;min-height:44px}
+textarea.input{resize:vertical;line-height:1.45}
+textarea.mono{font-family:var(--f-mono);font-size:14px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.money{position:relative}
+.money::before{content:"£";position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none}
+.money .input{padding-left:26px}
+.preview{display:flex;justify-content:space-between;align-items:center;background:var(--surface-2);border-radius:12px;padding:12px 14px}
+.preview b{font-family:var(--f-display);font-size:24px}
+.err{color:var(--neg);font-size:13.5px;min-height:1em}
+.confirm{background:color-mix(in srgb,var(--neg) 9%,var(--surface));border:1px solid color-mix(in srgb,var(--neg) 35%,var(--line));border-radius:12px;padding:12px}
+details.guide{font-size:13.5px}
+details.guide summary{cursor:pointer;color:var(--accent);font-weight:600}
+details.guide pre{font-family:var(--f-mono);font-size:12.5px;white-space:pre-wrap;background:var(--surface-2);padding:10px;border-radius:8px;margin:8px 0 0}
+
+/* sheet */
+.sheet{position:fixed;inset:0;z-index:50;display:flex;align-items:flex-end;justify-content:center}
+.sheet-backdrop{position:absolute;inset:0;background:#0008}
+.sheet-panel{position:relative;width:100%;max-width:560px;max-height:calc(100% - env(safe-area-inset-top,0px) - 12px);overflow-y:auto;background:var(--bg);border-radius:20px 20px 0 0;padding:8px 16px calc(20px + env(safe-area-inset-bottom,0px));box-shadow:var(--shadow);animation:up .22s ease-out}
+@keyframes up{from{transform:translateY(30px);opacity:.6}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.sheet-panel{animation:none}}
+.grabber{width:40px;height:5px;border-radius:9px;background:var(--line);margin:4px auto 10px}
+.sheet-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px}
+.x{background:var(--surface-2);border:0;border-radius:50%;width:34px;height:34px;font-size:18px;line-height:1;color:var(--muted)}
+
+/* nav */
+.nav{position:fixed;left:0;right:0;bottom:0;z-index:40;background:color-mix(in srgb,var(--surface) 92%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid var(--line);padding:6px 8px calc(6px + env(safe-area-inset-bottom,0px))}
+.nav-inner{max-width:560px;margin:0 auto;display:grid;grid-template-columns:repeat(5,1fr);align-items:center}
+.nav button{background:none;border:0;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;font-weight:600;color:var(--muted);padding:6px 0}
+.nav button[aria-current="page"]{color:var(--accent)}
+.nav svg{width:23px;height:23px}
+.nav .add{width:52px;height:52px;border-radius:16px;background:var(--accent);color:var(--accent-ink);justify-self:center;font-size:28px;line-height:1;padding:0;justify-content:center;box-shadow:var(--shadow)}
+.nav .add svg{width:26px;height:26px}
+
+.toast{position:fixed;left:50%;bottom:calc(86px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;font-weight:600;font-size:14px;z-index:60;max-width:calc(100% - 32px)}
+.notice{background:var(--surface-2);border-radius:12px;padding:12px 14px;font-size:14px}
+.empty{text-align:center;padding:28px 12px;color:var(--muted)}
+.empty .suits{font-size:26px;letter-spacing:6px;margin-bottom:6px}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="brand"><span class="pips"><span class="c-s">♠</span><span class="c-h">♥</span><span class="c-d">♦</span><span class="c-c">♣</span></span>Poker Session Tracker</div>
+    <button class="iconbtn" data-action="settings" aria-label="Backup and restore"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="7.5" ry="3"/><path d="M4.5 6v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3V6"/><path d="M4.5 12v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-6"/></svg></button>
+  </div>
+  <main id="view"></main>
+</div>
+
+<nav class="nav" aria-label="Sections">
+  <div class="nav-inner">
+    <button data-tab="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9.5h13V10"/></svg>Home</button>
+    <button data-tab="sessions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1" fill="currentColor"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="4" cy="18" r="1" fill="currentColor"/></svg>Sessions</button>
+    <button class="add" data-action="new-session" aria-label="Add session"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+    <button data-tab="stats"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m7 14 4-4 3 3 5-6"/></svg>Stats</button>
+    <button data-tab="hands"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><rect x="3.5" y="5" width="10" height="15" rx="2" transform="rotate(-10 8.5 12.5)"/><rect x="10" y="4" width="10" height="15" rx="2" transform="rotate(8 15 11.5)"/></svg>Hands</button>
+  </div>
+</nav>
+
+<div id="sheet" class="sheet" hidden>
+  <div class="sheet-backdrop" data-action="close-sheet"></div>
+  <div class="sheet-panel" role="dialog" aria-modal="true" id="sheet-panel"></div>
+</div>
+<div id="toast" class="toast" hidden></div>
+
+<script>
+"use strict";
+// ---------- state ----------
+const S = {
+  sessions: [], hands: [], live: null,
+  tab: "home", filter: "all", seg: "overall", handId: null,
+  db: null, loading: true, noDb: false, readOnly: false, streaming: null,
+};
+try { const t = localStorage.getItem("pst.tab"); if (t) S.tab = t; } catch (e) {}
+
+// ---------- helpers ----------
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const isNum = v => typeof v === "number" && isFinite(v);
+const toMin = t => { if (!t) return null; const [h, m] = String(t).split(":").map(Number); return isFinite(h) && isFinite(m) ? h * 60 + m : null; };
+function hoursOf(s) { const a = toMin(s.start), b = toMin(s.end); if (a == null || b == null) return 0; let d = b - a; if (d < 0) d += 1440; return d / 60; }
+const plOf = s => (isNum(s.buyIn) && isNum(s.cashOut)) ? Math.round((s.cashOut - s.buyIn) * 100) / 100 : null;
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const pad = n => String(n).padStart(2, "0");
+function todayISO() { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
+function nowHM() { const d = new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+function dParts(iso) { const [y, m, d] = iso.split("-").map(Number); return { y, m, d }; }
+function fmtDate(iso, withYear) { if (!iso) return ""; const { y, m, d } = dParts(iso); return `${d} ${MONTHS[m - 1]}${withYear ? " " + y : ""}`; }
+function weekday(iso) { const { y, m, d } = dParts(iso); return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date(y, m - 1, d).getDay()]; }
+function money(n, opts = {}) {
+  if (n == null || !isFinite(n)) return "—";
+  const sign = opts.sign !== false;
+  const abs = Math.abs(n);
+  const dec = opts.dec ?? (Math.round(abs * 100) % 100 ? 2 : 0);
+  const s = abs.toLocaleString("en-GB", { minimumFractionDigits: dec, maximumFractionDigits: dec });
+  return (n < 0 ? "−" : (sign && n > 0 ? "+" : "")) + "£" + s;
+}
+function moneyShort(n) {
+  const abs = Math.abs(n), sg = n < 0 ? "−" : "";
+  if (abs >= 1000) return sg + "£" + (abs / 1000).toFixed(abs >= 10000 ? 0 : 1).replace(/\.0$/, "") + "k";
+  return sg + "£" + Math.round(abs);
+}
+const pct = v => v == null || !isFinite(v) ? "—" : (v * 100).toFixed(1).replace(/\.0$/, "") + "%";
+const hrs = h => (Math.round(h * 10) / 10).toLocaleString("en-GB") + "h";
+const cls = n => n > 0 ? "pos" : n < 0 ? "neg" : "";
+function dur(h) { const m = Math.round(h * 60); return `${Math.floor(m / 60)}h ${pad(m % 60)}m`; }
+
+function sorted(list = S.sessions) {
+  return [...list].sort((a, b) => (a.date || "").localeCompare(b.date || "") || (toMin(a.start) ?? 0) - (toMin(b.start) ?? 0) || (a.createdAt || 0) - (b.createdAt || 0));
+}
+// Mirrors the spreadsheet's SUMMARY block exactly.
+function stats(list) {
+  const done = list.filter(s => plOf(s) != null);
+  const n = done.length;
+  const pls = done.map(plOf);
+  const pl = pls.reduce((a, b) => a + b, 0);
+  const hours = done.reduce((a, s) => a + hoursOf(s), 0);
+  const wins = pls.filter(p => p > 0).length;
+  const buyIns = done.reduce((a, s) => a + s.buyIn, 0);
+  return {
+    n, pl, hours, wins, buyIns,
+    best: n ? Math.max(...pls) : null, worst: n ? Math.min(...pls) : null,
+    avg: n ? pl / n : null, perHr: hours ? pl / hours : null,
+    winRate: n ? wins / n : null, roi: buyIns ? pl / buyIns : null,
+  };
+}
+const segFilter = seg => s => seg === "overall" || (seg === "cash" ? s.game === "Cash" : s.game === "Tournament");
+function blindsList(venue) {
+  const order = s => { const m = String(s).match(/[\d.]+/g); return m ? m.map(Number).reduce((a, b) => a * 1000 + b, 0) : 0; };
+  return [...new Set(S.sessions.filter(s => s.game === "Cash" && (!venue || s.venue === venue) && s.blinds).map(s => s.blinds))].sort((a, b) => order(a) - order(b));
+}
+
+// card notation: AsKd -> coloured suit glyphs
+const SUIT = { s: "♠", h: "♥", d: "♦", c: "♣" };
+function cardify(html) {
+  return html.replace(/\b((?:(?:10|[AKQJT2-9])[shdc]){1,5})\b/g, (m, grp, off, str) => {
+    // only single cards when clearly cards (avoid words like "As", "Js")
+    const parts = grp.match(/(10|[AKQJT2-9])([shdc])/g);
+    if (parts.length === 1 && /^[AKQJ][s]$/.test(grp)) return m;
+    return parts.map(p => { const r = p.slice(0, -1), su = p.slice(-1); return `<span class="c c-${su}">${r === "10" ? "T" : r}${SUIT[su]}</span>`; }).join("");
+  });
+}
+function inline(s) { return cardify(s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/(^|[^*])\*([^*\s][^*]*?)\*(?!\*)/g, "$1<em>$2</em>")); }
+function md(src) {
+  const lines = esc(src).split("\n");
+  let html = "", list = false, para = [];
+  const flush = () => { if (para.length) { html += "<p>" + inline(para.join("<br>")) + "</p>"; para = []; } };
+  const endList = () => { if (list) { html += "</ul>"; list = false; } };
+  for (const raw of lines) {
+    const l = raw.trim();
+    if (/^#{1,6}\s/.test(l)) { flush(); endList(); html += "<h4>" + inline(l.replace(/^#+\s*/, "")) + "</h4>"; continue; }
+    if (/^[-*•]\s+/.test(l)) { flush(); if (!list) { html += "<ul>"; list = true; } html += "<li>" + inline(l.replace(/^[-*•]\s+/, "")) + "</li>"; continue; }
+    if (!l) { flush(); endList(); continue; }
+    endList(); para.push(l);
+  }
+  flush(); endList();
+  return html;
+}
+
+let toastT;
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2600); }
+
+// ---------- charts ----------
+function nice(x) { const e = Math.pow(10, Math.floor(Math.log10(x))); const f = x / e; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * e; }
+function ticks(lo, hi, n) {
+  if (hi === lo) { hi = lo + 100; }
+  const step = nice((hi - lo) / n); const out = [];
+  for (let v = Math.floor(lo / step) * step; v <= Math.ceil(hi / step) * step + 1e-9; v += step) out.push(Math.round(v * 100) / 100);
+  return out;
+}
+const CHARTS = {};
+function runChart(id, list) {
+  if (list.length < 2) return `<p class="empty-note">The running P&amp;L curve appears once you have two sessions here.</p>`;
+  let run = 0;
+  const pts = [{ i: 0, y: 0 }].concat(list.map((s, k) => ({ i: k + 1, y: (run = Math.round((run + plOf(s)) * 100) / 100), s })));
+  const W = 340, H = 196, L = 42, R = 10, T = 22, B = 22;
+  const tk = ticks(Math.min(0, ...pts.map(p => p.y)), Math.max(0, ...pts.map(p => p.y)), 4);
+  const lo = tk[0], hi = tk[tk.length - 1];
+  const X = i => L + (i / (pts.length - 1)) * (W - L - R);
+  const Y = v => T + ((hi - v) / (hi - lo)) * (H - T - B);
+  const line = pts.map((p, k) => (k ? "L" : "M") + X(p.i).toFixed(1) + " " + Y(p.y).toFixed(1)).join(" ");
+  const y0 = Y(0).toFixed(1);
+  const area = line + ` L${X(pts.length - 1).toFixed(1)} ${y0} L${X(0).toFixed(1)} ${y0} Z`;
+  const last = pts[pts.length - 1];
+  CHARTS[id] = { pts, X, Y, W, H, T, B, L, R };
+  return `<div class="chart"><svg viewBox="0 0 ${W} ${H}" data-chart="${id}" role="img" aria-label="Running profit and loss over ${list.length} sessions, ending at ${money(last.y)}">
+    <defs>
+      <clipPath id="${id}-up"><rect x="0" y="0" width="${W}" height="${y0}"/></clipPath>
+      <clipPath id="${id}-dn"><rect x="0" y="${y0}" width="${W}" height="${H}"/></clipPath>
+    </defs>
+    ${tk.map(v => `<line x1="${L}" x2="${W - R}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" stroke="var(--line)" stroke-width="${v === 0 ? 1.2 : 0.6}" ${v === 0 ? "" : 'stroke-dasharray="2 3"'}/>
+      <text x="${L - 6}" y="${(Y(v) + 3.5).toFixed(1)}" text-anchor="end">${moneyShort(v)}</text>`).join("")}
+    <path d="${area}" fill="var(--pos)" opacity=".13" clip-path="url(#${id}-up)"/>
+    <path d="${area}" fill="var(--neg)" opacity=".13" clip-path="url(#${id}-dn)"/>
+    <path d="${line}" fill="none" stroke="var(--pos)" stroke-width="2" stroke-linejoin="round" clip-path="url(#${id}-up)"/>
+    <path d="${line}" fill="none" stroke="var(--neg)" stroke-width="2" stroke-linejoin="round" clip-path="url(#${id}-dn)"/>
+    <circle cx="${X(last.i).toFixed(1)}" cy="${Y(last.y).toFixed(1)}" r="4" fill="${last.y >= 0 ? "var(--pos)" : "var(--neg)"}" stroke="var(--surface)" stroke-width="2"/>
+    <text x="${L}" y="${H - 6}">${fmtDate(list[0].date)}</text>
+    <text x="${W - R}" y="${H - 6}" text-anchor="end">${fmtDate(list[list.length - 1].date)} · #${list.length}</text>
+    <g id="${id}-tip"></g>
+    <rect x="${L}" y="0" width="${W - L - R}" height="${H - B}" fill="transparent" data-hit="${id}"/>
+  </svg></div>`;
+}
+function monthChart(list) {
+  const by = {};
+  for (const s of list) { const k = (s.date || "").slice(0, 7); if (!k) continue; by[k] = (by[k] || 0) + plOf(s); }
+  const keys = Object.keys(by).sort().slice(-12);
+  if (!keys.length) return `<p class="empty-note">No sessions yet.</p>`;
+  const vals = keys.map(k => Math.round(by[k] * 100) / 100);
+  const W = 340, H = 180, L = 42, R = 8, T = 18, B = 22;
+  const tk = ticks(Math.min(0, ...vals), Math.max(0, ...vals), 4);
+  const lo = tk[0], hi = tk[tk.length - 1];
+  const Y = v => T + ((hi - v) / (hi - lo)) * (H - T - B);
+  const bw = (W - L - R) / keys.length, gap = Math.min(10, bw * 0.3);
+  return `<div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Profit and loss by month">
+    ${tk.map(v => `<line x1="${L}" x2="${W - R}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" stroke="var(--line)" stroke-width="${v === 0 ? 1.2 : 0.6}" ${v === 0 ? "" : 'stroke-dasharray="2 3"'}/><text x="${L - 6}" y="${(Y(v) + 3.5).toFixed(1)}" text-anchor="end">${moneyShort(v)}</text>`).join("")}
+    ${keys.map((k, i) => { const v = vals[i], x = L + i * bw + gap / 2, w = bw - gap, y = Math.min(Y(v), Y(0)), h = Math.max(1, Math.abs(Y(v) - Y(0)));
+      const m = Number(k.slice(5)), lbl = MONTHS[m - 1];
+      const ty = v >= 0 ? Y(v) - 4 : Y(v) + 11;
+      return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="3" fill="${v >= 0 ? "var(--pos)" : "var(--neg)"}" opacity=".85"/>
+        <text x="${(x + w / 2).toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="middle" class="tiptext" style="font-size:9.5px">${moneyShort(v)}</text>
+        <text x="${(x + w / 2).toFixed(1)}" y="${H - 6}" text-anchor="middle">${lbl}</text>`; }).join("")}
+  </svg></div>`;
+}
+function bindCharts() {
+  document.querySelectorAll("rect[data-hit]").forEach(r => {
+    const id = r.dataset.hit, c = CHARTS[id], svg = r.ownerSVGElement, tip = svg.querySelector(`#${id}-tip`);
+    const show = e => {
+      const box = svg.getBoundingClientRect();
+      const x = (e.clientX - box.left) / box.width * c.W;
+      const i = Math.max(1, Math.min(c.pts.length - 1, Math.round((x - c.L) / (c.W - c.L - c.R) * (c.pts.length - 1))));
+      const p = c.pts[i], px = c.X(p.i), py = c.Y(p.y), pl = plOf(p.s);
+      const label = `#${p.i} · ${fmtDate(p.s.date)} · ${money(pl)} → ${money(p.y)}`;
+      const tx = Math.max(c.L + 2, Math.min(c.W - c.R - 2, px));
+      const anchor = tx < c.W * 0.3 ? "start" : tx > c.W * 0.7 ? "end" : "middle";
+      tip.innerHTML = `<line x1="${px}" x2="${px}" y1="${c.T - 6}" y2="${c.H - c.B}" stroke="var(--muted)" stroke-width=".7"/>
+        <circle cx="${px}" cy="${py}" r="4" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/>
+        <text x="${tx}" y="10" text-anchor="${anchor}" class="tiptext">${esc(label)}</text>`;
+    };
+    r.addEventListener("pointermove", show);
+    r.addEventListener("pointerdown", show);
+    r.addEventListener("pointerleave", () => tip.innerHTML = "");
+  });
+}
+
+// ---------- views ----------
+function sessionRow(s, running) {
+  const pl = plOf(s), { d, m } = dParts(s.date);
+  const what = s.game === "Tournament" ? "Tournament" : `${esc(s.blinds || "Cash")}`;
+  const sub = [weekday(s.date), s.start && s.end ? `${s.start}–${s.end} · ${hrs(hoursOf(s))}` : "", `in ${money(s.buyIn, { sign: false })}`].filter(Boolean).join(" · ");
+  return `<button class="row" data-action="edit-session" data-id="${esc(s.id)}">
+    <div class="date-tile"><b>${d}</b><span>${MONTHS[m - 1]}</span></div>
+    <div class="row-main"><div class="t">${what}<span class="tag ${s.game === "Tournament" ? "t-tourn" : ""}">${esc(s.venue)}</span></div>
+      <div class="s">${esc(sub)}</div>${s.notes ? `<div class="s">“${esc(s.notes)}”</div>` : ""}</div>
+    <div class="row-amt num"><b class="${cls(pl)}">${money(pl)}</b>${running != null ? `<span>${money(running)}</span>` : ""}</div>
+  </button>`;
+}
+function runningMap() { const m = {}; let r = 0; for (const s of sorted()) { r = Math.round((r + (plOf(s) ?? 0)) * 100) / 100; m[s.id] = r; } return m; }
+
+function liveCard() {
+  const L = S.live;
+  if (!L) return `<section class="card"><div class="card-head"><h3>At the table?</h3></div>
+    <p class="muted" style="margin:0">Start a live session when you sit down. It times the session and keeps your buy-ins, so cashing out takes one tap.</p>
+    <div class="btnrow"><button class="btn primary" data-action="start-live" ${S.readOnly ? "disabled" : ""}>Start live session</button></div></section>`;
+  const el = L.startedAt ? (Date.now() - L.startedAt) / 3600000 : 0;
+  return `<section class="card live"><div class="card-head"><h3><span class="live-dot"></span>&nbsp; Live · ${L.game === "Tournament" ? "Tournament" : esc(L.blinds || "Cash")} ${esc(L.venue)}</h3><span class="muted">from ${esc(L.start)}</span></div>
+    <div class="live-row num"><div><span class="muted">Time</span><b id="live-elapsed">${dur(el)}</b></div><div><span class="muted">In for</span><b>${money(L.buyIn, { sign: false })}</b></div>${L.rebuys ? `<div><span class="muted">Rebuys</span><b>${L.rebuys}</b></div>` : ""}</div>
+    <div class="btnrow"><button class="btn" data-action="rebuy">+ Rebuy / top-up</button><button class="btn primary" data-action="end-live">Cash out</button><button class="btn" data-action="cancel-live" style="margin-left:auto">Discard</button></div>
+    <div id="live-confirm"></div></section>`;
+}
+
+function viewHome() {
+  const all = sorted(), st = stats(all), rm = runningMap();
+  const recent = [...all].reverse().slice(0, 5);
+  return `<div class="stack">
+    <section class="hero"><div class="eyebrow">Total profit / loss</div>
+      <div class="big num ${cls(st.pl)}">${money(st.pl)}</div>
+      <div class="kpis num">
+        <div class="kpi"><b>${st.n}</b><span>sessions</span></div>
+        <div class="kpi"><b>${hrs(st.hours)}</b><span>played</span></div>
+        <div class="kpi"><b class="${cls(st.perHr)}">${st.perHr == null ? "—" : money(st.perHr, { dec: 2 })}</b><span>per hour</span></div>
+        <div class="kpi"><b>${pct(st.winRate)}</b><span>win rate</span></div>
+      </div></section>
+    ${dataNudge()}
+    ${liveCard()}
+    <section class="card"><div class="card-head"><h3>Running P&amp;L</h3><span class="muted" style="font-size:12.5px">tap the chart</span></div>${runChart("home", all)}</section>
+    <section class="card"><div class="card-head"><h3>Recent sessions</h3><button class="linkbtn" data-tab="sessions">See all</button></div>
+      ${recent.length ? `<div class="rows">${recent.map(s => sessionRow(s, rm[s.id])).join("")}</div>` : emptySessions()}</section>
+    <section class="card"><div class="card-head"><h3>Unsure about a spot?</h3></div>
+      <p class="muted" style="margin:0">Paste a hand from your notes in your usual shorthand and get a street-by-street review.</p>
+      <div class="btnrow"><button class="btn" data-action="new-hand">Review a hand</button></div></section>
+  </div>`;
+}
+function dataNudge() {
+  if (!S.sessions.length && !S.hands.length) return `<section class="card live"><div class="card-head"><h3>Bring your sessions over</h3></div>
+    <p class="muted" style="margin:0">Restore your backup file to load your history. It's in iCloud Drive as <b>Poker Tracker backup.json</b>.</p>
+    <div class="btnrow"><button class="btn primary" data-action="settings">Restore from backup</button></div></section>`;
+  const lb = STORE.lastBackup || 0;
+  if (STORE.dirty && Date.now() - lb > 14 * 864e5) return `<div class="notice" style="display:flex;gap:10px;align-items:center;justify-content:space-between"><span>${lb ? `Last backup ${fmtDate(new Date(lb).toISOString().slice(0, 10))}.` : "You haven't backed up yet."} Your data lives only on this phone.</span><button class="btn" data-action="backup">Back up</button></div>`;
+  return "";
+}
+function emptySessions() {
+  return `<div class="empty"><div class="suits"><span class="c-s">♠</span><span class="c-h">♥</span><span class="c-d">♦</span><span class="c-c">♣</span></div>${S.loading ? "Loading your sessions…" : "No sessions yet. Tap + to log your first one."}</div>`;
+}
+
+function viewSessions() {
+  const F = S.filter;
+  const filt = s => F === "all" || (F === "cash" && s.game === "Cash") || (F === "tourn" && s.game === "Tournament") || (F === "home" && s.venue === "Home") || (F === "public" && s.venue === "Public");
+  const rm = runningMap();
+  const list = sorted().filter(filt).reverse();
+  const st = stats(list);
+  const groups = [];
+  for (const s of list) { const k = s.date.slice(0, 7); let g = groups[groups.length - 1]; if (!g || g.k !== k) groups.push(g = { k, items: [] }); g.items.push(s); }
+  const chip = (k, l) => `<button class="chip" aria-pressed="${F === k}" data-filter="${k}">${l}</button>`;
+  return `<div class="stack">
+    <div class="card-head" style="margin:0"><h2>Sessions</h2><span class="muted num">${st.n} · <b class="${cls(st.pl)}">${money(st.pl)}</b></span></div>
+    <div class="chips">${chip("all", "All")}${chip("cash", "Cash")}${chip("tourn", "Tournament")}${chip("public", "Public")}${chip("home", "Home")}</div>
+    ${list.length ? groups.map(g => { const gs = stats(g.items); const { y, m } = dParts(g.k + "-01");
+      return `<div><div class="month-head"><h3>${["January","February","March","April","May","June","July","August","September","October","November","December"][m - 1]} ${y}</h3><span class="num muted">${gs.n} · <b class="${cls(gs.pl)}">${money(gs.pl)}</b></span></div>
+      <div class="card" style="padding:4px 14px"><div class="rows">${g.items.map(s => sessionRow(s, rm[s.id])).join("")}</div></div></div>`; }).join("") : `<div class="card">${emptySessions()}</div>`}
+    <p class="foot">Grey figure under each result is your running P&amp;L after that session. Tap a session to edit or delete it.</p>
+  </div>`;
+}
+
+function breakdown(venue) {
+  const base = S.sessions.filter(s => s.game === "Cash" && s.venue === venue);
+  const cols = [{ h: `All ${venue}`, st: stats(base) }].concat(blindsList(venue).map(b => ({ h: b, st: stats(base.filter(s => s.blinds === b)) })));
+  const rowsDef = [
+    ["Sessions", s => s.n], ["Winning sessions", s => s.wins], ["Win rate", s => pct(s.winRate)],
+    ["Total P&L", s => `<span class="${cls(s.pl)}">${money(s.pl)}</span>`], ["Avg P&L / session", s => `<span class="${cls(s.avg)}">${money(s.avg, { dec: 2 })}</span>`],
+    ["Biggest win", s => money(s.best)], ["Biggest loss", s => money(s.worst)], ["Total hours", s => hrs(s.hours)],
+    ["Avg £/hr", s => `<span class="${cls(s.perHr)}">${s.perHr == null ? "—" : money(s.perHr, { dec: 2 })}</span>`], ["Total buy-ins", s => money(s.buyIns, { sign: false })], ["ROI", s => `<span class="${cls(s.roi)}">${pct(s.roi)}</span>`],
+  ];
+  return `<section class="card"><div class="card-head"><h3>${venue} cash by blinds</h3></div>
+    ${base.length ? `<div class="tablewrap"><table class="bk num"><thead><tr><th>Blinds</th>${cols.map(c => `<th>${esc(c.h)}</th>`).join("")}</tr></thead>
+    <tbody>${rowsDef.map(([l, f]) => `<tr><td>${l}</td>${cols.map(c => `<td>${c.st.n ? f(c.st) : "—"}</td>`).join("")}</tr>`).join("")}</tbody></table></div>` : `<p class="empty-note">No ${venue.toLowerCase()} cash sessions yet.</p>`}
+  </section>`;
+}
+function viewStats() {
+  const seg = S.seg, list = sorted().filter(segFilter(seg)), st = stats(list);
+  const b = (k, l) => `<button aria-pressed="${seg === k}" data-seg="${k}">${l}</button>`;
+  const M = (l, v, c = "") => `<div class="metric"><span>${l}</span><b class="num ${c}">${v}</b></div>`;
+  return `<div class="stack">
+    <h2>Stats</h2>
+    <div class="seg">${b("overall", "Overall")}${b("cash", "Cash")}${b("tourn", "Tournament")}</div>
+    <div class="metrics">
+      <div class="metric wide"><span>Total profit / loss</span><b class="num ${cls(st.pl)}">${money(st.pl)}</b></div>
+      ${M("Total sessions", st.n)}${M("Winning sessions", st.wins)}
+      ${M("Win rate", pct(st.winRate))}${M("ROI", pct(st.roi), cls(st.roi))}
+      ${M("Biggest win", money(st.best), cls(st.best))}${M("Biggest loss", money(st.worst), cls(st.worst))}
+      ${M("Avg P&amp;L / session", money(st.avg, { dec: 2 }), cls(st.avg))}${M("Avg £/hr", st.perHr == null ? "—" : money(st.perHr, { dec: 2 }), cls(st.perHr))}
+      ${M("Total hours played", hrs(st.hours))}${M("Total buy-ins", money(st.buyIns, { sign: false }))}
+    </div>
+    <section class="card"><div class="card-head"><h3>Running P&amp;L</h3><span class="muted" style="font-size:12.5px">${seg === "overall" ? "all games" : seg === "cash" ? "cash only" : "tournaments only"}</span></div>${runChart("stats", list)}</section>
+    <section class="card"><div class="card-head"><h3>By month</h3></div>${monthChart(list)}</section>
+    ${breakdown("Home")}
+    ${breakdown("Public")}
+    <p class="foot">Win = session with profit above £0 (break-even counts as a non-win). ROI = P&amp;L ÷ total buy-ins. New blind levels get their own column automatically.</p>
+  </div>`;
+}
+
+const VERDICTS = { "good play": "v-good", "reasonable": "v-good", "close spot": "v-close", "mistake": "v-bad", "big mistake": "v-bad" };
+const vClass = v => VERDICTS[String(v || "").toLowerCase()] || "v-none";
+function viewHands() {
+  if (S.handId) return viewHand();
+  const list = [...S.hands].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  return `<div class="stack">
+    <div class="card-head" style="margin:0"><h2>Hand review</h2><button class="btn primary" data-action="new-hand" ${S.readOnly ? "disabled" : ""}>New hand</button></div>
+    ${list.length ? list.map(h => `<button class="hand-row" data-action="open-hand" data-id="${esc(h.id)}">
+        <div class="meta"><span>${fmtDate(new Date(h.createdAt).toISOString().slice(0, 10), true)} · ${esc(h.game || "")}${h.stakes ? " " + esc(h.stakes) : ""}</span>
+        <span class="verdict ${vClass(h.verdict)}">${h.status === "analysing" ? "Reviewing…" : esc(h.verdict || "Needs review")}</span></div>
+        ${h.summary ? `<div class="sum">${cardify(esc(h.summary))}</div>` : ""}
+        <div class="txt">${cardify(esc(h.text))}</div></button>`).join("")
+      : `<div class="card empty"><div class="suits"><span class="c-h">A♥</span> <span class="c-s">K♠</span></div>No hands yet. Tap <b>New hand</b> and paste one from your notes, shorthand is fine.</div>`}
+  </div>`;
+}
+function viewHand() {
+  const h = S.hands.find(x => x.id === S.handId);
+  if (!h) return `<div class="stack"><button class="back" data-action="close-hand">‹ Hands</button><p class="muted">This hand was deleted.</p></div>`;
+  const copyBtn = (label, primary) => `<a class="btn ${primary ? "primary" : ""}" href="https://claude.ai/new" target="_blank" rel="noopener" data-action="copy-prompt">${label}</a>`;
+  let body;
+  if (h.analysis) {
+    const p = parseAnalysis(h.analysis);
+    body = `<div class="verdict-banner ${vClass(h.verdict)}"><span class="eyebrow" style="color:inherit">Verdict</span><b>${esc(h.verdict || "Review")}</b>${h.summary ? `<span style="color:var(--ink)">${cardify(esc(h.summary))}</span>` : ""}</div>
+      <section class="card"><div class="analysis">${md(p.body)}</div>
+      ${(h.thread || []).map(t => `<div class="qa"><div class="q">${t.q ? "You: " + cardify(esc(t.q)) : "Follow-up from Claude"}</div><div class="analysis">${md(t.a)}</div></div>`).join("")}
+      <details class="guide" style="margin-top:14px"><summary>Add a follow-up answer from Claude</summary>
+        <form class="stack" data-form="more" style="margin-top:10px"><textarea class="input" id="more-text" rows="4" placeholder="Paste Claude's follow-up reply"></textarea><button class="btn primary">Add to review</button></form></details>
+      </section>`;
+  } else {
+    body = `<section class="card"><div class="card-head"><h3>Get Claude's review</h3></div>
+      <ol class="steps">
+        <li><b>Copy the hand and open Claude.</b> <span class="muted">It's copied with coaching instructions, so Claude replies with a verdict and a street-by-street breakdown.</span>
+          <div class="btnrow" style="margin-top:10px">${copyBtn("Copy &amp; open Claude", true)}</div><div id="copy-fallback"></div></li>
+        <li><b>Paste it into a new chat and send.</b> <span class="muted">Ask Claude follow-ups there as much as you like.</span></li>
+        <li><b>Copy Claude's reply and paste it here</b> <span class="muted">(use the copy button under the reply) to save it with the hand.</span>
+          <form class="stack" data-form="review" style="margin-top:10px"><textarea class="input" id="review-text" rows="5" placeholder="Paste Claude's reply"></textarea><div class="err" id="review-err"></div><button class="btn primary">Save review</button></form></li>
+      </ol></section>`;
+  }
+  return `<div class="stack">
+    <div class="card-head" style="margin:0"><button class="back" data-action="close-hand">‹ Hands</button><span class="muted" style="font-size:13px">${esc(h.game || "")}${h.stakes ? " · " + esc(h.stakes) : ""}</span></div>
+    <section class="card"><div class="card-head"><h3>Your notes</h3><span class="muted" style="font-size:12.5px">${fmtDate(new Date(h.createdAt).toISOString().slice(0, 10), true)}</span></div>
+      <pre class="handtext">${cardify(esc(h.text))}</pre>${h.context ? `<p class="foot" style="margin:8px 0 0">Context: ${esc(h.context)}</p>` : ""}</section>
+    ${body}
+    <div class="btnrow" style="margin-top:0">${h.analysis ? copyBtn("Ask Claude again") : ""}<button class="btn danger" data-action="ask-delete-hand">Delete hand</button></div>
+    <div id="copy-fallback-2"></div>
+    <div id="hand-confirm"></div>
+  </div>`;
+}
+
+// ---------- render ----------
+let raf = 0;
+function render() { cancelAnimationFrame(raf); raf = requestAnimationFrame(paint); }
+function paint() {
+  const view = $("#view");
+  // keep anything typed into inputs in the main view across re-renders
+  const keep = {}; let focusId = null;
+  view.querySelectorAll("input[id],textarea[id]").forEach(el => keep[el.id] = el.value);
+  if (document.activeElement && view.contains(document.activeElement)) focusId = document.activeElement.id;
+  let html = "";
+  if (S.noDb) html += `<div class="notice" style="margin-bottom:14px">Your saved sessions can't be reached in this view. Open the app from Claude to see and add sessions.</div>`;
+  html += S.tab === "sessions" ? viewSessions() : S.tab === "stats" ? viewStats() : S.tab === "hands" ? viewHands() : viewHome();
+  view.innerHTML = html;
+  for (const [id, v] of Object.entries(keep)) { const el = document.getElementById(id); if (el && view.contains(el)) el.value = v; }
+  if (focusId) { const el = document.getElementById(focusId); el?.focus(); }
+  document.querySelectorAll(".nav [data-tab]").forEach(b => b.setAttribute("aria-current", b.dataset.tab === S.tab ? "page" : "false"));
+  bindCharts();
+}
+setInterval(() => { const el = $("#live-elapsed"); if (el && S.live?.startedAt) el.textContent = dur((Date.now() - S.live.startedAt) / 3600000); }, 20000);
+
+// ---------- sheet ----------
+function openSheet(html) { $("#sheet-panel").innerHTML = `<div class="grabber"></div>` + html; $("#sheet").hidden = false; document.body.style.overflow = "hidden"; const f = $("#sheet-panel [autofocus]"); if (f && matchMedia("(pointer:fine)").matches) f.focus(); }
+function closeSheet() { $("#sheet").hidden = true; $("#sheet-panel").innerHTML = ""; document.body.style.overflow = ""; }
+const segRadio = (name, opts, val) => `<div class="seg">${opts.map(o => `<label><input type="radio" name="${name}" value="${o}" ${o === val ? "checked" : ""}><span>${o}</span></label>`).join("")}</div>`;
+function blindChips(target) {
+  const b = blindsList();
+  return b.length ? `<div class="chips" style="margin-top:6px">${b.map(x => `<button type="button" class="chip" data-fill="${target}" data-val="${esc(x)}">${esc(x)}</button>`).join("")}</div>` : "";
+}
+
+function sessionForm(s, mode) {
+  const title = mode === "edit" ? "Edit session" : mode === "end" ? "Cash out" : mode === "live" ? "Start live session" : "Add session";
+  const isT = s.game === "Tournament";
+  const showCash = mode !== "live";
+  return `<div class="sheet-head"><h2>${title}</h2><button class="x" data-action="close-sheet" aria-label="Close">×</button></div>
+  <form class="stack" data-form="session" data-mode="${mode}" data-id="${esc(s.id || "")}" novalidate>
+    <div class="grid2"><div class="field"><span>Game type</span>${segRadio("game", ["Cash", "Tournament"], s.game || "Cash")}</div>
+      <div class="field"><span>Venue</span>${segRadio("venue", ["Public", "Home"], s.venue || "Public")}</div></div>
+    <label class="field" id="blinds-field" ${isT ? "hidden" : ""}><span>Blinds</span><input class="input" id="f-blinds" name="blinds" value="${esc(s.blinds || "")}" placeholder="£1/2" autocomplete="off">${blindChips("f-blinds")}</label>
+    <div class="grid2"><label class="field"><span>Date</span><input class="input" type="date" name="date" value="${esc(s.date || todayISO())}" required></label>
+      <label class="field"><span>Buy-in${mode === "end" || mode === "edit" ? " (total)" : ""}</span><div class="money"><input class="input num" name="buyIn" inputmode="decimal" value="${s.buyIn ?? ""}" placeholder="0" ${mode === "new" || mode === "live" ? "autofocus" : ""}></div></label></div>
+    <div class="grid2"><label class="field"><span>Start</span><input class="input" type="time" name="start" value="${esc(s.start || "")}"></label>
+      ${showCash ? `<label class="field"><span>End</span><input class="input" type="time" name="end" value="${esc(s.end || "")}"></label>` : `<div></div>`}</div>
+    ${showCash ? `<label class="field"><span>Cash-out</span><div class="money"><input class="input num" name="cashOut" inputmode="decimal" value="${s.cashOut ?? ""}" placeholder="0" ${mode === "end" ? "autofocus" : ""}></div></label>
+    <div class="preview"><div><div class="eyebrow">Profit / loss</div><b class="num" id="pv-pl">—</b></div><div style="text-align:right"><div class="eyebrow">Hours</div><b class="num" id="pv-h">—</b></div></div>` : ""}
+    <label class="field"><span>Notes</span><textarea class="input" name="notes" rows="2" placeholder="Set over set, card dead, table was soft…">${esc(s.notes || "")}</textarea></label>
+    <div class="err" id="form-err"></div>
+    <button class="btn primary block">${mode === "edit" ? "Save changes" : mode === "live" ? "Start session" : "Save session"}</button>
+    ${mode === "edit" ? `<div id="del-zone"><button type="button" class="btn danger block" data-action="ask-delete-session">Delete session</button></div>` : ""}
+  </form>`;
+}
+function readNum(v) { if (v == null || String(v).trim() === "") return null; const n = Number(String(v).replace(/[£,\s]/g, "")); return isFinite(n) ? n : NaN; }
+function updatePreview(form) {
+  const fd = new FormData(form), pv = $("#pv-pl"), ph = $("#pv-h");
+  const g = fd.get("game"); const bf = $("#blinds-field"); if (bf) bf.hidden = g === "Tournament";
+  if (!pv) return;
+  const b = readNum(fd.get("buyIn")), c = readNum(fd.get("cashOut"));
+  const pl = isNum(b) && isNum(c) ? c - b : null;
+  pv.textContent = pl == null ? "—" : money(pl); pv.className = "num " + cls(pl);
+  const h = hoursOf({ start: fd.get("start"), end: fd.get("end") });
+  ph.textContent = fd.get("start") && fd.get("end") ? dur(h) : "—";
+}
+
+function handForm() {
+  const last = [...S.sessions].sort((a, b) => (b.date || "").localeCompare(a.date || ""))[0];
+  return `<div class="sheet-head"><h2>New hand</h2><button class="x" data-action="close-sheet" aria-label="Close">×</button></div>
+  <form class="stack" data-form="hand" novalidate>
+    <div class="grid2"><div class="field"><span>Game</span>${segRadio("game", ["Cash", "Tournament"], last?.game || "Cash")}</div>
+      <label class="field"><span>Stakes / level</span><input class="input" id="h-stakes" name="stakes" value="${esc(last?.game === "Cash" ? last.blinds : "")}" placeholder="£1/2"></label></div>
+    ${blindChips("h-stakes")}
+    <label class="field"><span>The hand, as written in your notes</span>
+      <textarea class="input mono" name="text" rows="9" autofocus placeholder="£1/2, 250 eff. Hero BTN AsQd&#10;UTG limp, CO limp, H r 12, BB c, UTG c, CO f&#10;F (38) Qh7c2s: BB x, UTG x, H b 25, BB c, UTG f&#10;T (88) 5d: BB x, H b 60, BB jam 210. ?"></textarea></label>
+    <label class="field"><span>Anything else? <span class="muted" style="font-weight:400">optional</span></span>
+      <input class="input" name="context" placeholder="Villain reads, table dynamic, what you're unsure about"></label>
+    <details class="guide"><summary>Shorthand that works well</summary>
+      <pre>Positions  UTG HJ CO BTN SB BB · Hero = H
+Cards      AsKd  Th9h  (s h d c)
+Actions    x check · b bet · c call · r raise
+           3b 3-bet · f fold · jam / ai all-in
+Streets    F flop · T turn · R river
+Pot        (38) before the street
+Stacks     250 eff  or  100bb</pre>
+      <p class="muted" style="margin:8px 0 0">Write it however you normally do. If something's unclear the review says what it assumed.</p></details>
+    <div class="err" id="form-err"></div>
+    <button class="btn primary block">Save hand</button>
+  </form>`;
+}
+
+// ---------- data writes ----------
+function needDb() { if (!S.db) { toast("Saving isn't available in this view."); return false; } return true; }
+function writeErr(e) {
+  if (e?.code === "quota_exceeded") return "Your phone's storage for this app is full. Back up, then delete some old hands.";
+  return "Couldn't save that. Try again.";
+}
+async function submitSession(form) {
+  const fd = new FormData(form), mode = form.dataset.mode, id = form.dataset.id, err = $("#form-err");
+  const game = fd.get("game"), venue = fd.get("venue");
+  const data = {
+    date: fd.get("date"), game, venue, blinds: game === "Tournament" ? "" : String(fd.get("blinds") || "").trim(),
+    buyIn: readNum(fd.get("buyIn")), start: fd.get("start") || "", notes: String(fd.get("notes") || "").trim(),
+  };
+  if (!data.date) return err.textContent = "Add the date of the session.";
+  if (!isNum(data.buyIn) || data.buyIn < 0) return err.textContent = "Enter the buy-in as a number, e.g. 200.";
+  if (data.blinds && !data.blinds.startsWith("£") && /^\d/.test(data.blinds)) data.blinds = "£" + data.blinds;
+  if (mode !== "live") {
+    data.cashOut = readNum(fd.get("cashOut")); data.end = fd.get("end") || "";
+    if (!isNum(data.cashOut) || data.cashOut < 0) return err.textContent = "Enter what you cashed out, or 0 if you busted.";
+  }
+  if (!needDb()) return;
+  const btn = form.querySelector(".btn.primary"); btn.disabled = true;
+  try {
+    if (mode === "live") {
+      const [h, m] = (data.start || nowHM()).split(":").map(Number);
+      const st = new Date(); st.setHours(h, m, 0, 0); if (st > Date.now()) st.setDate(st.getDate() - 1);
+      await S.db.doc("live/current").set({ ...data, start: data.start || nowHM(), startedAt: st.getTime(), rebuys: 0 });
+      toast("Live session started. Good luck!");
+    } else if (mode === "edit") {
+      const prev = S.sessions.find(s => s.id === id);
+      await S.db.doc("sessions/" + id).set({ ...data, createdAt: prev?.createdAt || Date.now() });
+      toast("Session updated");
+    } else {
+      await S.db.collection("sessions").add({ ...data, createdAt: Date.now() });
+      if (mode === "end") await S.db.doc("live/current").delete();
+      const pl = data.cashOut - data.buyIn;
+      toast(`Saved · ${money(pl)}`);
+    }
+    closeSheet();
+  } catch (e) { err.textContent = writeErr(e); btn.disabled = false; }
+}
+
+// ---------- hand review (Claude) ----------
+function parseAnalysis(text) {
+  const verdict = (text.match(/^\s*\**VERDICT:?\**\s*:?\s*(.+)$/im) || [])[1]?.replace(/\*+/g, "").trim() || "";
+  const summary = (text.match(/^\s*\**SUMMARY:?\**\s*:?\s*(.+)$/im) || [])[1]?.replace(/\*+/g, "").trim() || "";
+  const body = text.replace(/^\s*\**VERDICT.*$/im, "").replace(/^\s*\**SUMMARY.*$/im, "").trim();
+  const v = Object.keys(VERDICTS).sort((a, b) => b.length - a.length).find(k => verdict.toLowerCase().includes(k));
+  return { verdict: v ? v[0].toUpperCase() + v.slice(1) : verdict, summary, body };
+}
+function playerProfile() {
+  const cashB = blindsList();
+  const st = stats(S.sessions);
+  return `About the player: a live player in the UK. ${cashB.length ? `Cash stakes they play: ${cashB.join(", ")} (public card room and home games).` : ""} They also play small live tournaments (£20 to £90 buy-ins). ${st.n ? `They have logged ${st.n} sessions.` : ""} Assume typical live low-stakes player pools (lots of limping, calling too wide preflop, under-bluffed rivers, big raises meaning strength) unless the notes say otherwise.`;
+}
+function analysisPrompt(h) {
+  return `You are an experienced live No-Limit Hold'em coach reviewing one hand for a player. ${playerProfile()}
+
+The player wrote this hand quickly in their own shorthand. Decode it carefully. Common notation: positions UTG/UTG1/LJ/HJ/CO/BTN/SB/BB; H or Hero = the player; x = check, b = bet, c = call, r = raise, 3b = 3-bet, f = fold, jam/ai/shove = all-in, lim = limp; F/T/R = flop/turn/river; a number in brackets is usually the pot; "eff" = effective stack. Amounts are in £ unless marked bb. If something essential is ambiguous, state the assumption you made in one short line and continue.
+
+Game: ${h.game || "Cash"}${h.stakes ? `\nStakes / level: ${h.stakes}` : ""}${h.context ? `\nExtra context from the player: ${h.context}` : ""}
+Hand notes:
+"""
+${h.text}
+"""
+
+Reply in exactly this structure:
+VERDICT: <exactly one of: Good play | Reasonable | Close spot | Mistake | Big mistake>
+SUMMARY: <one sentence naming the single most important decision in the hand and whether they got it right>
+
+## The hand as I read it
+<a compact street-by-street restatement, one line per street, with pot size and stack-to-pot ratio where you can work them out>
+
+## Street by street
+<for each street where the player made a decision: start the paragraph with "✓", "~" or "✗" (good, fine, mistake), say what they did, what you recommend (action and sizing in £ and bb), and why: ranges, pot odds, equity, blockers and player-pool tendencies. If the key decision is still to come (the notes end with a question), answer it clearly.>
+
+## What to take away
+<2 to 4 bullet points they can apply at the table next time>
+
+Write cards like AsKd or Th9h. Be direct and concrete, use real numbers (pot odds as %, sizes in £ and bb). Keep the whole reply under 450 words. Use plain markdown headings and bullets only, no tables.`;
+}
+async function submitHand(form) {
+  const fd = new FormData(form), err = $("#form-err");
+  const text = String(fd.get("text") || "").trim();
+  if (text.length < 8) return err.textContent = "Paste or type the hand first.";
+  if (!needDb()) return;
+  const data = { text, game: fd.get("game"), stakes: String(fd.get("stakes") || "").trim(), context: String(fd.get("context") || "").trim(), createdAt: Date.now(), status: "saved" };
+  const btn = form.querySelector(".btn.primary"); btn.disabled = true;
+  try {
+    const ref = await S.db.collection("hands").add(data);
+    closeSheet();
+    S.tab = "hands"; S.handId = ref.id;
+    // the snapshot may not have delivered yet; seed it so the detail view can render
+    if (!S.hands.find(x => x.id === ref.id)) S.hands = [...S.hands, { id: ref.id, ...data }];
+    render(); scrollTo(0, 0);
+  } catch (e) { err.textContent = writeErr(e); btn.disabled = false; }
+}
+
+// ---------- events ----------
+function setTab(t) { S.tab = t; if (t !== "hands") S.handId = null; try { localStorage.setItem("pst.tab", t); } catch (e) {} render(); scrollTo(0, 0); }
+document.addEventListener("click", async e => {
+  const t = e.target.closest("[data-tab],[data-action],[data-filter],[data-seg],[data-fill]");
+  if (!t) return;
+  if (t.dataset.tab) { if (t.dataset.tab === "hands") S.handId = null; return setTab(t.dataset.tab); }
+  if (t.dataset.filter) { S.filter = t.dataset.filter; return render(); }
+  if (t.dataset.seg) { S.seg = t.dataset.seg; return render(); }
+  if (t.dataset.fill) { const el = document.getElementById(t.dataset.fill); if (el) { el.value = t.dataset.val; el.dispatchEvent(new Event("input", { bubbles: true })); } return; }
+  const a = t.dataset.action;
+  if (a === "close-sheet") return closeSheet();
+  if (a === "new-session") { if (S.live) return openSheet(sessionForm({ ...S.live, end: nowHM() }, "end")); openSheet(sessionForm({ game: "Cash", venue: "Public", start: "", date: todayISO() }, "new")); return updatePreview($("#sheet-panel form")); }
+  if (a === "edit-session") { const s = S.sessions.find(x => x.id === t.dataset.id); if (!s) return; openSheet(sessionForm(s, "edit")); return updatePreview($("#sheet-panel form")); }
+  if (a === "ask-delete-session") { $("#del-zone").innerHTML = `<div class="confirm"><b>Delete this session?</b><p class="muted" style="margin:4px 0 10px">It comes out of every total and chart. This can't be undone.</p><div class="btnrow" style="margin:0"><button type="button" class="btn" data-action="keep-session">Keep it</button><button type="button" class="btn danger solid" data-action="delete-session">Delete</button></div></div>`; return; }
+  if (a === "keep-session") { $("#del-zone").innerHTML = `<button type="button" class="btn danger block" data-action="ask-delete-session">Delete session</button>`; return; }
+  if (a === "delete-session") { const id = $("#sheet-panel form").dataset.id; if (!needDb()) return; try { await S.db.doc("sessions/" + id).delete(); closeSheet(); toast("Session deleted"); } catch (er) { toast(writeErr(er)); } return; }
+  if (a === "start-live") { openSheet(sessionForm({ game: "Cash", venue: "Public", date: todayISO(), start: nowHM(), blinds: blindsList("Public").slice(-1)[0] || "" }, "live")); return updatePreview($("#sheet-panel form")); }
+  if (a === "end-live") { openSheet(sessionForm({ ...S.live, end: nowHM() }, "end")); return updatePreview($("#sheet-panel form")); }
+  if (a === "rebuy") {
+    openSheet(`<div class="sheet-head"><h2>Rebuy / top-up</h2><button class="x" data-action="close-sheet" aria-label="Close">×</button></div>
+      <form class="stack" data-form="rebuy" novalidate><p class="muted" style="margin:0">Currently in for ${money(S.live.buyIn, { sign: false })}.</p>
+      <label class="field"><span>Amount added</span><div class="money"><input class="input num" name="amt" inputmode="decimal" autofocus placeholder="0"></div></label>
+      <div class="err" id="form-err"></div><button class="btn primary block">Add to buy-in</button></form>`); return;
+  }
+  if (a === "cancel-live") { $("#live-confirm").innerHTML = `<div class="confirm" style="margin-top:12px"><b>Discard this live session?</b><p class="muted" style="margin:4px 0 10px">Nothing gets logged. Use Cash out to save it instead.</p><div class="btnrow" style="margin:0"><button class="btn" data-action="keep-live">Keep playing</button><button class="btn danger solid" data-action="discard-live">Discard</button></div></div>`; return; }
+  if (a === "keep-live") { $("#live-confirm").innerHTML = ""; return; }
+  if (a === "discard-live") { if (!needDb()) return; try { await S.db.doc("live/current").delete(); toast("Live session discarded"); } catch (er) { toast(writeErr(er)); } return; }
+  if (a === "new-hand") { openSheet(handForm()); return; }
+  if (a === "open-hand") { S.tab = "hands"; S.handId = t.dataset.id; render(); scrollTo(0, 0); return; }
+  if (a === "close-hand") { S.handId = null; render(); return; }
+  if (a === "copy-prompt") { copyPrompt(t); return; }
+  if (a === "settings") { openSheet(settingsSheet()); return; }
+  if (a === "backup") { backup(); return; }
+  if (a === "ask-delete-hand") { $("#hand-confirm").innerHTML = `<div class="confirm"><b>Delete this hand and its review?</b><div class="btnrow" style="margin-top:10px"><button class="btn" data-action="keep-hand">Keep it</button><button class="btn danger solid" data-action="delete-hand">Delete</button></div></div>`; return; }
+  if (a === "keep-hand") { $("#hand-confirm").innerHTML = ""; return; }
+  if (a === "delete-hand") { if (!needDb()) return; const id = S.handId; try { await S.db.doc("hands/" + id).delete(); S.handId = null; render(); toast("Hand deleted"); } catch (er) { toast(writeErr(er)); } return; }
+});
+document.addEventListener("submit", async e => {
+  const f = e.target; e.preventDefault();
+  if (f.dataset.form === "session") return submitSession(f);
+  if (f.dataset.form === "hand") return submitHand(f);
+  if (f.dataset.form === "review") {
+    const text = $("#review-text").value.trim();
+    if (text.length < 40) return $("#review-err").textContent = "Paste Claude's full reply, starting from VERDICT.";
+    const p = parseAnalysis(text);
+    await S.db.doc("hands/" + S.handId).update({ status: "done", analysis: text, verdict: p.verdict, summary: p.summary, thread: [], analysedAt: Date.now() });
+    $("#review-text").value = ""; scrollTo(0, 0); toast("Review saved"); return;
+  }
+  if (f.dataset.form === "more") {
+    const a = $("#more-text").value.trim(); if (!a) return;
+    const h = S.hands.find(x => x.id === S.handId);
+    await S.db.doc("hands/" + S.handId).update({ thread: [...(h.thread || []), { q: "", a }] });
+    $("#more-text").value = ""; toast("Added to review"); return;
+  }
+  if (f.dataset.form === "rebuy") {
+    const amt = readNum(new FormData(f).get("amt"));
+    if (!isNum(amt) || amt <= 0) return $("#form-err").textContent = "Enter the amount you added, e.g. 100.";
+    if (!needDb()) return;
+    try { await S.db.doc("live/current").update({ buyIn: Math.round((S.live.buyIn + amt) * 100) / 100, rebuys: (S.live.rebuys || 0) + 1 }); closeSheet(); toast(`In for ${money(S.live.buyIn + amt, { sign: false })}`); }
+    catch (er) { $("#form-err").textContent = writeErr(er); }
+  }
+});
+document.addEventListener("input", e => { const f = e.target.closest("form[data-form=session]"); if (f) updatePreview(f); });
+document.addEventListener("change", e => {
+  if (e.target.id === "restore-file" && e.target.files[0]) return restore(e.target.files[0]);
+  const f = e.target.closest("form[data-form=session]"); if (f) updatePreview(f);
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && !$("#sheet").hidden) closeSheet();
+});
+
+// ---------- on-device storage ----------
+// Same small API the page used with Claude's database, backed by localStorage.
+const KEY = "pst.data.v1";
+let STORE = {};
+try { STORE = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) {}
+STORE.sessions ||= {}; STORE.hands ||= {}; STORE.live ??= null;
+const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+function persist(dirty = true) {
+  if (dirty) STORE.dirty = true;
+  try { localStorage.setItem(KEY, JSON.stringify(STORE)); } catch (e) { throw { code: "quota_exceeded" }; }
+  sync();
+}
+function sync() {
+  S.sessions = Object.entries(STORE.sessions).map(([id, d]) => ({ id, ...d }));
+  S.hands = Object.entries(STORE.hands).map(([id, d]) => ({ id, ...d }));
+  S.live = STORE.live ? { ...STORE.live } : null;
+  S.loading = false; render();
+}
+const localDb = {
+  doc(path) {
+    const [c, id] = path.split("/");
+    return {
+      async set(d) { if (c === "live") STORE.live = { ...d }; else STORE[c][id] = { ...d }; persist(); },
+      async update(d) {
+        const cur = c === "live" ? STORE.live : STORE[c][id];
+        if (!cur) throw { code: "not_found" };
+        Object.assign(cur, d); persist();
+      },
+      async delete() { if (c === "live") STORE.live = null; else delete STORE[c][id]; persist(); },
+    };
+  },
+  collection(c) { return { async add(d) { const id = newId(); STORE[c][id] = { ...d }; persist(); return { id }; } }; },
+};
+
+// ---------- backup & restore ----------
+function settingsSheet() {
+  const lb = STORE.lastBackup;
+  return `<div class="sheet-head"><h2>Backup &amp; restore</h2><button class="x" data-action="close-sheet" aria-label="Close">×</button></div>
+  <div class="stack">
+    <p class="muted" style="margin:0">Everything is stored on this phone: <b>${S.sessions.length}</b> sessions and <b>${S.hands.length}</b> hands. If you remove the app from your home screen, its data goes with it, so back up every so often.</p>
+    <div class="notice">Last backup: <b>${lb ? fmtDate(new Date(lb).toISOString().slice(0, 10), true) : "never"}</b></div>
+    <button class="btn primary block" data-action="backup">Back up to Files or iCloud</button>
+    <label class="btn block" for="restore-file">Restore from a backup file</label>
+    <input type="file" id="restore-file" class="sr-file" accept=".json,application/json">
+    <p class="foot">Restoring adds the sessions and hands in the file. Entries already on this phone are kept, so restoring the same file twice doesn't create duplicates.</p>
+  </div>`;
+}
+async function backup() {
+  const data = { app: "poker-tracker", version: 1, exportedAt: new Date().toISOString(), sessions: STORE.sessions, hands: STORE.hands, live: STORE.live };
+  const name = `Poker Tracker backup ${todayISO()}.json`;
+  const blob = new Blob([JSON.stringify(data, null, 1)], { type: "application/json" });
+  try {
+    const file = new File([blob], name, { type: "application/json" });
+    if (navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file], title: "Poker Tracker backup" });
+    else { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
+    STORE.lastBackup = Date.now(); STORE.dirty = false; persist(false);
+    closeSheet(); toast("Backup saved");
+  } catch (e) { if (e?.name !== "AbortError") toast("The backup didn't save. Try again."); }
+}
+async function restore(file) {
+  try {
+    const j = JSON.parse(await file.text());
+    const toMap = x => Array.isArray(x) ? Object.fromEntries(x.map(({ id, ...d }) => [id || newId(), d])) : (x || {});
+    const sm = toMap(j.sessions), hm = toMap(j.hands);
+    const ns = Object.keys(sm).length, nh = Object.keys(hm).length;
+    if (!ns && !nh) throw new Error("empty");
+    Object.assign(STORE.sessions, sm); Object.assign(STORE.hands, hm);
+    if (j.live && !STORE.live) STORE.live = j.live;
+    persist(false);
+    closeSheet(); setTab("home");
+    toast(`Restored ${ns} session${ns === 1 ? "" : "s"}${nh ? ` and ${nh} hand${nh === 1 ? "" : "s"}` : ""}`);
+  } catch (e) { toast("That file isn't a Poker Tracker backup."); }
+}
+
+// ---------- hand review in Claude ----------
+function copyPrompt(link) {
+  const h = S.hands.find(x => x.id === S.handId); if (!h) return;
+  const text = analysisPrompt(h);
+  const fallback = () => {
+    const box = $("#copy-fallback") || $("#copy-fallback-2");
+    if (box) { box.innerHTML = `<p class="foot" style="margin:10px 0 6px">Copying didn't work here. Select all of this, copy it, then paste it into Claude:</p><textarea class="input mono" rows="6" readonly>${esc(text)}</textarea>`; box.querySelector("textarea").select(); }
+  };
+  try { navigator.clipboard.writeText(text).then(() => toast("Copied. Paste it into Claude"), fallback); } catch (e) { fallback(); }
+}
+
+// ---------- boot ----------
+S.db = localDb;
+sync();
+try { navigator.storage?.persist?.(); } catch (e) {}
+if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+</script>
+</body>
+</html>
