@@ -534,6 +534,7 @@ function viewSessions() {
     ${list.length ? groups.map(g => { const gs = stats(g.items); const { y, m } = dParts(g.k + "-01");
       return `<div><div class="month-head"><h3>${["January","February","March","April","May","June","July","August","September","October","November","December"][m - 1]} ${y}</h3><span class="num muted">${gs.n} · <b class="${cls(gs.pl)}">${money(gs.pl)}</b></span></div>
       <div class="card" style="padding:4px 14px"><div class="rows">${g.items.map(s => sessionRow(s, rm[s.id])).join("")}</div></div></div>`; }).join("") : `<div class="card">${emptySessions()}</div>`}
+    ${S.sessions.some(s => !s.venueName) ? `<div class="notice" style="display:flex;gap:10px;align-items:center;justify-content:space-between"><span><b>${S.sessions.filter(s => !s.venueName).length}</b> sessions have no venue yet.</span><button class="btn" data-action="fill-venues">Fill in venues</button></div>` : ""}
     <p class="foot">Grey figure under each result is your running P&amp;L after that session. Tap a session to edit or delete it.</p>
   </div>`;
 }
@@ -558,11 +559,69 @@ function venueTable(list) {
   const rows = Object.entries(groups).map(([k, items]) => { const [type, name] = JSON.parse(k); return { type, name, st: stats(items) }; })
     .sort((a, b) => !a.name - !b.name || b.st.n - a.st.n);
   if (!rows.length) return "";
-  return `<section class="card"><div class="card-head"><h3>By venue</h3><button class="linkbtn" data-action="manage-venues">Edit names</button></div>
+  return `<section class="card"><div class="card-head"><h3>By venue</h3><span style="display:flex;gap:14px"><button class="linkbtn" data-action="fill-venues">Fill in</button><button class="linkbtn" data-action="manage-venues">Edit names</button></span></div>
     <div class="tablewrap"><table class="bk num"><thead><tr><th>Venue</th><th>Sessions</th><th>P&amp;L</th><th>£/hr</th><th>Win rate</th></tr></thead><tbody>
     ${rows.map(r => `<tr><td><span style="color:var(--ink);font-weight:600">${esc(r.name || "No name")}</span> <span class="tag">${r.type}</span></td><td>${r.st.n}</td><td class="${cls(r.st.pl)}">${money(r.st.pl)}</td><td class="${cls(r.st.perHr)}">${r.st.perHr == null ? "—" : money(r.st.perHr, { dec: 2 })}</td><td>${pct(r.st.winRate)}</td></tr>`).join("")}
-    </tbody></table></div>${rows.some(r => !r.name) ? `<p class="foot" style="margin:10px 0 0">“No name” covers sessions logged before venues had names. Tap one in Sessions to give it a venue.</p>` : ""}</section>`;
+    </tbody></table></div>${rows.some(r => !r.name) ? `<p class="foot" style="margin:10px 0 0">“No name” covers sessions logged before venues had names. Use <b>Fill in</b> to set lots at once by day and game type.</p>` : ""}</section>`;
 }
+// ---------- fill in venues by pattern ----------
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+function dayIdx(iso) { const { y, m, d } = dParts(iso); return (new Date(y, m - 1, d).getDay() + 6) % 7; }
+function fillSheet() {
+  const missing = S.sessions.filter(s => !s.venueName).length;
+  return `<div class="sheet-head"><h2>Fill in venues</h2><button class="x" data-action="close-sheet" aria-label="Close">×</button></div>
+  <form class="stack" data-form="fill" novalidate>
+    <p class="muted" style="margin:0"><b>${missing}</b> session${missing === 1 ? "" : "s"} still need a venue. Describe a pattern and every matching session without a venue is filled in. Sessions you've already named are never changed.</p>
+    <h3>Which sessions</h3>
+    <div class="field"><span>Game type</span>${segRadio("fgame", ["Any", "Cash", "Tournament"], "Any")}</div>
+    <div class="field"><span>Day of the week <span style="font-weight:400">· tap any that apply</span></span><div class="chips wrap">${DAYS.map((d, i) => `<button type="button" class="chip" data-day="${i}" aria-pressed="false">${d}</button>`).join("")}</div></div>
+    <label class="field" id="fblinds-field"><span>Blinds</span><select class="input" name="fblinds"><option value="">Any</option>${blindsList().map(b => `<option>${esc(b)}</option>`).join("")}</select></label>
+    <h3>Venue to set</h3>
+    <div class="field">${segRadio("fgroup", ["Casino", "Private", "Home"], "Casino", { Private: "Private game" })}</div>
+    <div class="field"><div id="fill-chips" data-type="Casino">${venueChips("Casino", "f-fill")}</div><input class="input" id="f-fill" name="fname" placeholder="Venue name, e.g. Black Horse" autocomplete="off"></div>
+    <div class="preview" style="display:block"><div class="eyebrow">Matches</div><div id="fill-preview" class="foot" style="margin-top:4px"></div></div>
+    <button class="btn primary block" id="fill-apply" disabled>Fill in venues</button>
+    ${S.lastFill ? `<button type="button" class="btn block" data-action="undo-fill">Undo last fill (${S.lastFill.length} session${S.lastFill.length === 1 ? "" : "s"})</button>` : ""}
+  </form>`;
+}
+function fillRule(form) {
+  const fd = new FormData(form);
+  return { game: fd.get("fgame"), days: [...form.querySelectorAll("[data-day][aria-pressed=true]")].map(b => +b.dataset.day),
+    blinds: fd.get("fgame") === "Tournament" ? "" : (fd.get("fblinds") || ""), group: fd.get("fgroup"), name: String(fd.get("fname") || "").trim() };
+}
+// Casino / Private game venues apply to Public sessions, Home venues to Home sessions.
+const fillMatches = r => S.sessions.filter(s => !s.venueName && (r.group === "Home" ? s.venue === "Home" : s.venue === "Public")
+  && (r.game === "Any" || s.game === r.game) && (!r.days.length || r.days.includes(dayIdx(s.date))) && (!r.blinds || s.blinds === r.blinds));
+function updateFill(form) {
+  const r = fillRule(form), m = fillMatches(r);
+  const fc = $("#fill-chips");
+  if (fc.dataset.type !== r.group) { fc.dataset.type = r.group; fc.innerHTML = venueChips(r.group, "f-fill"); }
+  fc.querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", String(c.dataset.val.toLowerCase() === r.name.toLowerCase())));
+  $("#fblinds-field").hidden = r.game === "Tournament";
+  const where = r.group === "Home" ? "Home" : "Public";
+  $("#fill-preview").innerHTML = m.length
+    ? `<b class="num" style="font-size:17px;color:var(--ink)">${m.length} ${where} session${m.length === 1 ? "" : "s"}</b><br>${[...m].sort((a, b) => a.date.localeCompare(b.date)).map(s => `${weekday(s.date)} ${fmtDate(s.date)} · ${s.game === "Tournament" ? "Tournament" : esc(s.blinds || "Cash")} · ${money(plOf(s))}`).join("<br>")}`
+    : `No ${where} sessions without a venue match this pattern.`;
+  const btn = $("#fill-apply");
+  btn.disabled = !m.length || !r.name;
+  btn.textContent = !m.length ? "Fill in venues" : r.name ? `Set ${m.length} session${m.length === 1 ? "" : "s"} to ${r.name}` : "Now choose the venue";
+}
+function applyFill(form) {
+  const r = fillRule(form), m = fillMatches(r);
+  if (!m.length || !r.name) return;
+  const name = canonicalVenue(r.group, r.name);
+  S.lastFill = m.map(x => ({ id: x.id, kind: STORE.sessions[x.id].kind }));
+  for (const x of m) { const d = STORE.sessions[x.id]; d.venueName = name; d.kind = r.group === "Home" ? "" : r.group; }
+  rememberVenue(r.group, name); persist();
+  openSheet(fillSheet()); updateFill($("#sheet-panel form"));
+  toast(`${m.length} session${m.length === 1 ? "" : "s"} set to ${name}`);
+}
+function undoFill() {
+  for (const { id, kind } of S.lastFill || []) { const d = STORE.sessions[id]; if (!d) continue; delete d.venueName; if (kind) d.kind = kind; else delete d.kind; }
+  const n = S.lastFill?.length || 0; S.lastFill = null; persist();
+  openSheet(fillSheet()); updateFill($("#sheet-panel form")); toast(`Undid ${n} session${n === 1 ? "" : "s"}`);
+}
+
 function venuesSheet() {
   const all = ["Casino", "Private", "Home"].flatMap(t => venuesFor(t).map(n => ({ t, n, count: S.sessions.filter(s => groupOf(s) === t && s.venueName === n).length })));
   return `<div class="sheet-head"><h2>Venues</h2><button class="x" data-action="close-sheet" aria-label="Close">×</button></div>
@@ -677,9 +736,9 @@ function blindChips(target) {
 const venuePlaceholder = t => t === "Casino" ? "Tap one above or type a new casino, e.g. Hippodrome" : t === "Private" ? "Tap one above or type the private game's name" : "Optional, e.g. Dave's";
 const placeLabel = t => t === "Casino" ? "Which casino?" : t === "Private" ? "Which private game?" : "Whose home game?";
 const formGroup = s => s.venue === "Home" ? "Home" : (s.kind || "Casino");
-function venueChips(type) {
+function venueChips(type, target = "f-place") {
   const v = venuesFor(type);
-  return v.length ? `<div class="chips wrap" style="margin-bottom:8px">${v.map(x => `<button type="button" class="chip" data-fill="f-place" data-val="${esc(x)}">${esc(x)}</button>`).join("")}</div>`
+  return v.length ? `<div class="chips wrap" style="margin-bottom:8px">${v.map(x => `<button type="button" class="chip" data-fill="${target}" data-val="${esc(x)}">${esc(x)}</button>`).join("")}</div>`
     : `<p class="foot" style="margin:0 0 6px">Venues you add are saved here so next time you just tap one.</p>`;
 }
 function lastDefaults() {
@@ -863,11 +922,12 @@ async function submitHand(form) {
 // ---------- events ----------
 function setTab(t) { S.tab = t; if (t !== "hands") S.handId = null; try { localStorage.setItem("pst.tab", t); } catch (e) {} render(); scrollTo(0, 0); }
 document.addEventListener("click", async e => {
-  const t = e.target.closest("[data-tab],[data-action],[data-filter],[data-seg],[data-fill]");
+  const t = e.target.closest("[data-tab],[data-action],[data-filter],[data-seg],[data-fill],[data-day]");
   if (!t) return;
   if (t.dataset.tab) { if (t.dataset.tab === "hands") S.handId = null; return setTab(t.dataset.tab); }
   if (t.dataset.filter) { S.filter = t.dataset.filter; return render(); }
   if (t.dataset.seg) { S.seg = t.dataset.seg; return render(); }
+  if (t.dataset.day) { t.setAttribute("aria-pressed", String(t.getAttribute("aria-pressed") !== "true")); return updateFill(t.closest("form")); }
   if (t.dataset.fill) { const el = document.getElementById(t.dataset.fill); if (el) { el.value = t.dataset.val; el.dispatchEvent(new Event("input", { bubbles: true })); } return; }
   const a = t.dataset.action;
   if (a === "close-sheet") return closeSheet();
@@ -893,6 +953,8 @@ document.addEventListener("click", async e => {
   if (a === "copy-prompt") { copyPrompt(t); return; }
   if (a === "settings") { openSheet(settingsSheet()); return; }
   if (a === "manage-venues") { openSheet(venuesSheet()); return; }
+  if (a === "fill-venues") { openSheet(fillSheet()); updateFill($("#sheet-panel form")); return; }
+  if (a === "undo-fill") { undoFill(); return; }
   if (a === "remove-venue") { const f = t.closest("form"); STORE.venues[f.dataset.type] = (STORE.venues[f.dataset.type] || []).filter(n => n !== f.dataset.name); persist(false); openSheet(venuesSheet()); return; }
   if (a === "lock-now") { lock(); return; }
   if (a === "change-pw") { openSheet(pwSheet()); return; }
@@ -915,6 +977,7 @@ document.addEventListener("submit", async e => {
     persist(); openSheet(venuesSheet()); toast(`Renamed to ${target}`); return;
   }
   if (f.dataset.form === "pw-change") return changePassword(f);
+  if (f.dataset.form === "fill") return applyFill(f);
   if (f.dataset.form === "review") {
     const text = $("#review-text").value.trim();
     if (text.length < 40) return $("#review-err").textContent = "Paste Claude's full reply, starting from VERDICT.";
@@ -936,10 +999,11 @@ document.addEventListener("submit", async e => {
     catch (er) { $("#form-err").textContent = writeErr(er); }
   }
 });
-document.addEventListener("input", e => { const f = e.target.closest("form[data-form=session]"); if (f) updatePreview(f); });
+document.addEventListener("input", e => { const f = e.target.closest("form[data-form=session]"); if (f) updatePreview(f); const ff = e.target.closest("form[data-form=fill]"); if (ff) updateFill(ff); });
 document.addEventListener("change", e => {
   if (e.target.id === "restore-file" && e.target.files[0]) return restore(e.target.files[0]);
   const f = e.target.closest("form[data-form=session]"); if (f) updatePreview(f);
+  const ff = e.target.closest("form[data-form=fill]"); if (ff) updateFill(ff);
 });
 document.addEventListener("keydown", e => {
   if (e.key === "Escape" && !$("#sheet").hidden) closeSheet();
