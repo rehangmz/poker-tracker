@@ -322,10 +322,13 @@ function stats(list) {
   };
 }
 const segFilter = seg => s => seg === "overall" || (seg === "cash" ? s.game === "Cash" : s.game === "Tournament");
-// Venue type is Casino or Private; venueName is the named game ("Hippodrome").
+// venue is Public (strangers) or Home. Public games are a Casino or a Private game (kind).
+// Named venues ("Hippodrome") are saved per group: Casino, Private or Home.
+const groupOf = s => s.venue === "Home" ? "Home" : (s.kind || "");
+const GROUP_LABEL = { Casino: "Casino", Private: "Private game", Home: "Home" };
 function venuesFor(type) {
   const last = {};
-  for (const s of S.sessions) if (s.venue === type && s.venueName && (!(s.venueName in last) || s.date > last[s.venueName])) last[s.venueName] = s.date;
+  for (const s of S.sessions) if (groupOf(s) === type && s.venueName && (!(s.venueName in last) || s.date > last[s.venueName])) last[s.venueName] = s.date;
   for (const n of (STORE?.venues?.[type] || [])) if (!(n in last)) last[n] = "";
   return Object.keys(last).sort((a, b) => (last[b] || "").localeCompare(last[a] || "") || a.localeCompare(b));
 }
@@ -335,7 +338,7 @@ function rememberVenue(type, name) {
   STORE.venues[type] ||= [];
   if (!STORE.venues[type].includes(name)) STORE.venues[type].push(name);
 }
-const venueLabel = s => s.venueName || s.venue;
+const venueLabel = s => s.venueName || GROUP_LABEL[groupOf(s)] || s.venue;
 function blindsList(venue) {
   const order = s => { const m = String(s).match(/[\d.]+/g); return m ? m.map(Number).reduce((a, b) => a * 1000 + b, 0) : 0; };
   return [...new Set(S.sessions.filter(s => s.game === "Cash" && (!venue || s.venue === venue) && s.blinds).map(s => s.blinds))].sort((a, b) => order(a) - order(b));
@@ -458,7 +461,7 @@ function bindCharts() {
 function sessionRow(s, running) {
   const pl = plOf(s), { d, m } = dParts(s.date);
   const what = s.game === "Tournament" ? "Tournament" : `${esc(s.blinds || "Cash")}`;
-  const sub = [s.venueName ? s.venue : "", weekday(s.date), s.start && s.end ? `${s.start}–${s.end} · ${hrs(hoursOf(s))}` : "", `in ${money(s.buyIn, { sign: false })}`].filter(Boolean).join(" · ");
+  const sub = [s.venueName ? (GROUP_LABEL[groupOf(s)] || s.venue) : "", weekday(s.date), s.start && s.end ? `${s.start}–${s.end} · ${hrs(hoursOf(s))}` : "", `in ${money(s.buyIn, { sign: false })}`].filter(Boolean).join(" · ");
   return `<button class="row" data-action="edit-session" data-id="${esc(s.id)}">
     <div class="date-tile"><b>${d}</b><span>${MONTHS[m - 1]}</span></div>
     <div class="row-main"><div class="t">${what}<span class="tag ${s.game === "Tournament" ? "t-tourn" : ""}">${esc(venueLabel(s))}</span></div>
@@ -516,17 +519,17 @@ function emptySessions() {
 
 function viewSessions() {
   const F = S.filter;
-  const filt = s => F === "all" || (F === "cash" && s.game === "Cash") || (F === "tourn" && s.game === "Tournament") || (F === "casino" && s.venue === "Casino") || (F === "private" && s.venue === "Private") || (F.startsWith("v:") && s.venueName === F.slice(2));
+  const filt = s => F === "all" || (F === "cash" && s.game === "Cash") || (F === "tourn" && s.game === "Tournament") || (F === "public" && s.venue === "Public") || (F === "home" && s.venue === "Home") || (F === "casino" && groupOf(s) === "Casino") || (F === "private" && groupOf(s) === "Private") || (F.startsWith("v:") && s.venueName === F.slice(2));
   const rm = runningMap();
   const list = sorted().filter(filt).reverse();
   const st = stats(list);
   const groups = [];
   for (const s of list) { const k = s.date.slice(0, 7); let g = groups[groups.length - 1]; if (!g || g.k !== k) groups.push(g = { k, items: [] }); g.items.push(s); }
   const chip = (k, l) => `<button class="chip" aria-pressed="${F === k}" data-filter="${esc(k)}">${esc(l)}</button>`;
-  const named = [...new Set(["Casino", "Private"].flatMap(venuesFor))].filter(n => S.sessions.some(s => s.venueName === n));
+  const named = [...new Set(["Casino", "Private", "Home"].flatMap(venuesFor))].filter(n => S.sessions.some(s => s.venueName === n));
   return `<div class="stack">
     <div class="card-head" style="margin:0"><h2>Sessions</h2><span class="muted num">${st.n} · <b class="${cls(st.pl)}">${money(st.pl)}</b></span></div>
-    <div class="chips">${chip("all", "All")}${chip("cash", "Cash")}${chip("tourn", "Tournament")}${chip("casino", "Casino")}${chip("private", "Private")}</div>
+    <div class="chips">${chip("all", "All")}${chip("cash", "Cash")}${chip("tourn", "Tournament")}${chip("public", "Public")}${chip("home", "Home")}${chip("casino", "Casino")}${chip("private", "Private game")}</div>
     ${named.length ? `<div class="chips">${named.map(n => chip("v:" + n, n)).join("")}</div>` : ""}
     ${list.length ? groups.map(g => { const gs = stats(g.items); const { y, m } = dParts(g.k + "-01");
       return `<div><div class="month-head"><h3>${["January","February","March","April","May","June","July","August","September","October","November","December"][m - 1]} ${y}</h3><span class="num muted">${gs.n} · <b class="${cls(gs.pl)}">${money(gs.pl)}</b></span></div>
@@ -551,7 +554,7 @@ function breakdown(venue) {
 }
 function venueTable(list) {
   const groups = {};
-  for (const s of list) (groups[JSON.stringify([s.venue, s.venueName || ""])] ||= []).push(s);
+  for (const s of list) (groups[JSON.stringify([GROUP_LABEL[groupOf(s)] || s.venue, s.venueName || ""])] ||= []).push(s);
   const rows = Object.entries(groups).map(([k, items]) => { const [type, name] = JSON.parse(k); return { type, name, st: stats(items) }; })
     .sort((a, b) => !a.name - !b.name || b.st.n - a.st.n);
   if (!rows.length) return "";
@@ -559,6 +562,14 @@ function venueTable(list) {
     <div class="tablewrap"><table class="bk num"><thead><tr><th>Venue</th><th>Sessions</th><th>P&amp;L</th><th>£/hr</th><th>Win rate</th></tr></thead><tbody>
     ${rows.map(r => `<tr><td><span style="color:var(--ink);font-weight:600">${esc(r.name || "No name")}</span> <span class="tag">${r.type}</span></td><td>${r.st.n}</td><td class="${cls(r.st.pl)}">${money(r.st.pl)}</td><td class="${cls(r.st.perHr)}">${r.st.perHr == null ? "—" : money(r.st.perHr, { dec: 2 })}</td><td>${pct(r.st.winRate)}</td></tr>`).join("")}
     </tbody></table></div>${rows.some(r => !r.name) ? `<p class="foot" style="margin:10px 0 0">“No name” covers sessions logged before venues had names. Tap one in Sessions to give it a venue.</p>` : ""}</section>`;
+}
+function venuesSheet() {
+  const all = ["Casino", "Private", "Home"].flatMap(t => venuesFor(t).map(n => ({ t, n, count: S.sessions.filter(s => groupOf(s) === t && s.venueName === n).length })));
+  return `<div class="sheet-head"><h2>Venues</h2><button class="x" data-action="close-sheet" aria-label="Close">×</button></div>
+  <div class="stack">${all.length ? all.map((v, i) => `<form data-form="venue" data-type="${v.t}" data-name="${esc(v.n)}" novalidate><div class="field"><span>${GROUP_LABEL[v.t]} · ${v.count} session${v.count === 1 ? "" : "s"}</span>
+      <div class="askbar" style="margin:0"><input class="input" id="ven-${i}" name="name" value="${esc(v.n)}"><button class="btn">Rename</button>${v.count ? "" : `<button type="button" class="btn danger" data-action="remove-venue">Remove</button>`}</div></div></form>`).join("")
+    : `<p class="muted" style="margin:0">No venues yet. They're saved when you log a session.</p>`}
+    <p class="foot">Renaming changes every session at that venue. Rename one to match another and they merge.</p></div>`;
 }
 function viewStats() {
   const seg = S.seg, list = sorted().filter(segFilter(seg)), st = stats(list);
@@ -578,8 +589,8 @@ function viewStats() {
     <section class="card"><div class="card-head"><h3>Running P&amp;L</h3><span class="muted" style="font-size:12.5px">${seg === "overall" ? "all games" : seg === "cash" ? "cash only" : "tournaments only"}</span></div>${runChart("stats", list)}</section>
     <section class="card"><div class="card-head"><h3>By month</h3></div>${monthChart(list)}</section>
     ${venueTable(list)}
-    ${breakdown("Casino")}
-    ${breakdown("Private")}
+    ${breakdown("Home")}
+    ${breakdown("Public")}
     <p class="foot">Win = session with profit above £0 (break-even counts as a non-win). ROI = P&amp;L ÷ total buy-ins. New blind levels get their own column automatically.</p>
   </div>`;
 }
@@ -657,13 +668,15 @@ setInterval(() => { const el = $("#live-elapsed"); if (el && S.live?.startedAt) 
 // ---------- sheet ----------
 function openSheet(html) { $("#sheet-panel").innerHTML = `<div class="grabber"></div>` + html; $("#sheet").hidden = false; document.body.style.overflow = "hidden"; const f = $("#sheet-panel [autofocus]"); if (f && matchMedia("(pointer:fine)").matches) f.focus(); }
 function closeSheet() { $("#sheet").hidden = true; $("#sheet-panel").innerHTML = ""; document.body.style.overflow = ""; }
-const segRadio = (name, opts, val) => `<div class="seg">${opts.map(o => `<label><input type="radio" name="${name}" value="${o}" ${o === val ? "checked" : ""}><span>${o}</span></label>`).join("")}</div>`;
+const segRadio = (name, opts, val, labels = {}) => `<div class="seg">${opts.map(o => `<label><input type="radio" name="${name}" value="${o}" ${o === val ? "checked" : ""}><span>${labels[o] || o}</span></label>`).join("")}</div>`;
 function blindChips(target) {
   const b = blindsList();
   return b.length ? `<div class="chips" style="margin-top:6px">${b.map(x => `<button type="button" class="chip" data-fill="${target}" data-val="${esc(x)}">${esc(x)}</button>`).join("")}</div>` : "";
 }
 
-const venuePlaceholder = t => t === "Casino" ? "Tap a venue above or type a new one, e.g. Hippodrome" : "Tap a game above or name a new one, e.g. Dave's Friday game";
+const venuePlaceholder = t => t === "Casino" ? "Tap one above or type a new casino, e.g. Hippodrome" : t === "Private" ? "Tap one above or type the private game's name" : "Optional, e.g. Dave's";
+const placeLabel = t => t === "Casino" ? "Which casino?" : t === "Private" ? "Which private game?" : "Whose home game?";
+const formGroup = s => s.venue === "Home" ? "Home" : (s.kind || "Casino");
 function venueChips(type) {
   const v = venuesFor(type);
   return v.length ? `<div class="chips wrap" style="margin-bottom:8px">${v.map(x => `<button type="button" class="chip" data-fill="f-place" data-val="${esc(x)}">${esc(x)}</button>`).join("")}</div>`
@@ -671,7 +684,7 @@ function venueChips(type) {
 }
 function lastDefaults() {
   const l = sorted().slice(-1)[0];
-  return l ? { game: l.game, venue: l.venue, venueName: l.venueName || "", blinds: l.game === "Cash" ? l.blinds : "" } : { game: "Cash", venue: "Casino" };
+  return l ? { game: l.game, venue: l.venue, kind: l.kind || "Casino", venueName: l.venueName || "", blinds: l.game === "Cash" ? l.blinds : "" } : { game: "Cash", venue: "Public", kind: "Casino" };
 }
 function sessionForm(s, mode) {
   const title = mode === "edit" ? "Edit session" : mode === "end" ? "Cash out" : mode === "live" ? "Start live session" : "Add session";
@@ -680,10 +693,11 @@ function sessionForm(s, mode) {
   return `<div class="sheet-head"><h2>${title}</h2><button class="x" data-action="close-sheet" aria-label="Close">×</button></div>
   <form class="stack" data-form="session" data-mode="${mode}" data-id="${esc(s.id || "")}" novalidate>
     <div class="grid2"><div class="field"><span>Game type</span>${segRadio("game", ["Cash", "Tournament"], s.game || "Cash")}</div>
-      <div class="field"><span>Casino or private</span>${segRadio("venue", ["Casino", "Private"], s.venue || "Casino")}</div></div>
-    <div class="field"><span>Venue</span>
-      <div id="venue-chips" data-type="${esc(s.venue || "Casino")}">${venueChips(s.venue || "Casino")}</div>
-      <input class="input" id="f-place" name="venueName" value="${esc(s.venueName || "")}" placeholder="${venuePlaceholder(s.venue || "Casino")}" autocomplete="off"></div>
+      <div class="field"><span>Venue</span>${segRadio("venue", ["Public", "Home"], s.venue || "Public")}</div></div>
+    <div class="field" id="kind-field" ${s.venue === "Home" ? "hidden" : ""}><span>Public game</span>${segRadio("kind", ["Casino", "Private"], s.kind || "Casino", { Private: "Private game" })}</div>
+    <div class="field"><span id="place-label">${placeLabel(formGroup(s))}</span>
+      <div id="venue-chips" data-type="${esc(formGroup(s))}">${venueChips(formGroup(s))}</div>
+      <input class="input" id="f-place" name="venueName" value="${esc(s.venueName || "")}" placeholder="${venuePlaceholder(formGroup(s))}" autocomplete="off"></div>
     <label class="field" id="blinds-field" ${isT ? "hidden" : ""}><span>Blinds</span><input class="input" id="f-blinds" name="blinds" value="${esc(s.blinds || "")}" placeholder="£1/2" autocomplete="off">${blindChips("f-blinds")}</label>
     <div class="grid2"><label class="field"><span>Date</span><input class="input" type="date" name="date" value="${esc(s.date || todayISO())}" required></label>
       <label class="field"><span>Buy-in${mode === "end" || mode === "edit" ? " (total)" : ""}</span><div class="money"><input class="input num" name="buyIn" inputmode="decimal" value="${s.buyIn ?? ""}" placeholder="0" ${mode === "new" || mode === "live" ? "autofocus" : ""}></div></label></div>
@@ -703,8 +717,10 @@ function updatePreview(form) {
   const g = fd.get("game"); const bf = $("#blinds-field"); if (bf) bf.hidden = g === "Tournament";
   const vc = $("#venue-chips"), place = $("#f-place");
   if (vc && place) {
-    const t = fd.get("venue");
+    const kf = $("#kind-field"); if (kf) kf.hidden = fd.get("venue") === "Home";
+    const t = formGroup({ venue: fd.get("venue"), kind: fd.get("kind") });
     if (vc.dataset.type !== t) {
+      $("#place-label").textContent = placeLabel(t);
       if (venuesFor(vc.dataset.type).includes(place.value.trim())) place.value = "";
       vc.dataset.type = t; vc.innerHTML = venueChips(t); place.placeholder = venuePlaceholder(t);
     }
@@ -752,13 +768,13 @@ function writeErr(e) {
 }
 async function submitSession(form) {
   const fd = new FormData(form), mode = form.dataset.mode, id = form.dataset.id, err = $("#form-err");
-  const game = fd.get("game"), venue = fd.get("venue");
+  const game = fd.get("game"), venue = fd.get("venue"), kind = venue === "Home" ? "" : fd.get("kind"), group = formGroup({ venue, kind });
   const data = {
-    date: fd.get("date"), game, venue, venueName: canonicalVenue(venue, String(fd.get("venueName") || "").trim()), blinds: game === "Tournament" ? "" : String(fd.get("blinds") || "").trim(),
+    date: fd.get("date"), game, venue, kind, venueName: canonicalVenue(group, String(fd.get("venueName") || "").trim()), blinds: game === "Tournament" ? "" : String(fd.get("blinds") || "").trim(),
     buyIn: readNum(fd.get("buyIn")), start: fd.get("start") || "", notes: String(fd.get("notes") || "").trim(),
   };
   if (!data.date) return err.textContent = "Add the date of the session.";
-  if (!data.venueName && mode !== "edit") return err.textContent = venue === "Casino" ? "Pick the casino or type its name." : "Pick the game or give it a name.";
+  if (!data.venueName && mode !== "edit" && venue === "Public") return err.textContent = kind === "Casino" ? "Pick the casino or type its name." : "Pick the private game or type its name.";
   if (!isNum(data.buyIn) || data.buyIn < 0) return err.textContent = "Enter the buy-in as a number, e.g. 200.";
   if (data.blinds && !data.blinds.startsWith("£") && /^\d/.test(data.blinds)) data.blinds = "£" + data.blinds;
   if (mode !== "live") {
@@ -766,7 +782,7 @@ async function submitSession(form) {
     if (!isNum(data.cashOut) || data.cashOut < 0) return err.textContent = "Enter what you cashed out, or 0 if you busted.";
   }
   if (!needDb()) return;
-  rememberVenue(venue, data.venueName);
+  rememberVenue(group, data.venueName);
   const btn = form.querySelector(".btn.primary"); btn.disabled = true;
   try {
     if (mode === "live") {
@@ -799,7 +815,7 @@ function parseAnalysis(text) {
 function playerProfile() {
   const cashB = blindsList();
   const st = stats(S.sessions);
-  return `About the player: a live player in the UK. ${cashB.length ? `Cash stakes they play: ${cashB.join(", ")}.` : ""} ${venuesFor("Casino").length ? `Casino card rooms they play: ${venuesFor("Casino").join(", ")}.` : ""} ${venuesFor("Private").length ? `They also play private games with friends.` : ""} They also play small live tournaments (£20 to £90 buy-ins). ${st.n ? `They have logged ${st.n} sessions.` : ""} Assume typical live low-stakes player pools (lots of limping, calling too wide preflop, under-bluffed rivers, big raises meaning strength) unless the notes say otherwise.`;
+  return `About the player: a live player in the UK. ${cashB.length ? `Cash stakes they play: ${cashB.join(", ")}.` : ""} ${venuesFor("Casino").length ? `Casino card rooms they play: ${venuesFor("Casino").join(", ")}.` : ""} ${venuesFor("Private").length ? `They also play private games with strangers.` : ""} They also play home games with friends. They also play small live tournaments (£20 to £90 buy-ins). ${st.n ? `They have logged ${st.n} sessions.` : ""} Assume typical live low-stakes player pools (lots of limping, calling too wide preflop, under-bluffed rivers, big raises meaning strength) unless the notes say otherwise.`;
 }
 function analysisPrompt(h) {
   return `You are an experienced live No-Limit Hold'em coach reviewing one hand for a player. ${playerProfile()}
@@ -893,8 +909,8 @@ document.addEventListener("submit", async e => {
     const t = f.dataset.type, old = f.dataset.name, nu = String(new FormData(f).get("name") || "").trim();
     if (!nu || nu === old) return;
     const target = venuesFor(t).find(n => n !== old && n.toLowerCase() === nu.toLowerCase()) || nu;
-    for (const x of Object.values(STORE.sessions)) if (x.venue === t && x.venueName === old) x.venueName = target;
-    if (STORE.live?.venue === t && STORE.live.venueName === old) STORE.live.venueName = target;
+    for (const x of Object.values(STORE.sessions)) if (groupOf(x) === t && x.venueName === old) x.venueName = target;
+    if (STORE.live && groupOf(STORE.live) === t && STORE.live.venueName === old) STORE.live.venueName = target;
     STORE.venues[t] = [...new Set((STORE.venues[t] || []).map(n => n === old ? target : n).concat(target))];
     persist(); openSheet(venuesSheet()); toast(`Renamed to ${target}`); return;
   }
@@ -955,9 +971,13 @@ async function openVault(pw) {
 }
 function normalise() {
   STORE.sessions ||= {}; STORE.hands ||= {}; STORE.live ??= null; STORE.venues ||= {};
-  STORE.venues.Casino ||= []; STORE.venues.Private ||= [];
-  const map = { Public: "Casino", Home: "Private" };   // older versions used Public / Home
-  for (const x of [...Object.values(STORE.sessions), STORE.live]) if (x && map[x.venue]) x.venue = map[x.venue];
+  STORE.venues.Casino ||= []; STORE.venues.Private ||= []; STORE.venues.Home ||= [];
+  // One earlier version stored Casino/Private as the venue itself; fold those back under Public/Home.
+  for (const x of [...Object.values(STORE.sessions), STORE.live]) {
+    if (!x) continue;
+    if (x.venue === "Casino") { x.venue = "Public"; x.kind = "Casino"; }
+    else if (x.venue === "Private") { if (x.venueName) { x.venue = "Public"; x.kind = "Private"; } else x.venue = "Home"; }
+  }
 }
 function persist(dirty = true) {
   if (!STORE) return;
@@ -1103,7 +1123,7 @@ async function restore(file) {
     if (!ns && !nh) throw new Error("empty");
     Object.assign(STORE.sessions, sm); Object.assign(STORE.hands, hm);
     if (j.live && !STORE.live) STORE.live = j.live;
-    if (j.venues) for (const t of ["Casino", "Private"]) for (const n of j.venues[t] || []) rememberVenue(t, n);
+    if (j.venues) for (const t of ["Casino", "Private", "Home"]) for (const n of j.venues[t] || []) rememberVenue(t, n);
     normalise(); persist(false);
     closeSheet(); setTab("home");
     toast(`Restored ${ns} session${ns === 1 ? "" : "s"}${nh ? ` and ${nh} hand${nh === 1 ? "" : "s"}` : ""}`);
