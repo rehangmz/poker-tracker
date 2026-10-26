@@ -172,6 +172,10 @@ table.bk thead th:first-child{color:var(--muted);font-family:var(--f-body);font-
 .v-close{background:color-mix(in srgb,var(--warn) 17%,transparent);color:var(--warn)}
 .v-bad{background:color-mix(in srgb,var(--neg) 15%,transparent);color:var(--neg)}
 .v-none{background:var(--surface-2);color:var(--muted)}
+.v-study{background:var(--accent-soft);color:var(--accent)}
+.bestplay{display:flex;flex-direction:column;gap:2px;border-top:1px solid color-mix(in srgb,currentColor 25%,transparent);margin-top:8px;padding-top:8px}
+.bestplay b{font-size:18px;color:var(--ink)}
+.did{display:flex;gap:10px;align-items:baseline;justify-content:space-between;margin-top:10px;font-size:14px}
 .handtext{font-family:var(--f-mono);font-size:13.5px;white-space:pre-wrap;word-break:break-word;background:var(--surface-2);border-radius:10px;padding:12px;margin:0}
 .c{font-weight:700;white-space:nowrap}
 .c-s{color:var(--suit-s)} .c-h{color:var(--suit-h)} .c-d{color:var(--suit-d)} .c-c{color:var(--suit-c)}
@@ -654,7 +658,7 @@ function viewStats() {
   </div>`;
 }
 
-const VERDICTS = { "good play": "v-good", "reasonable": "v-good", "close spot": "v-close", "mistake": "v-bad", "big mistake": "v-bad" };
+const VERDICTS = { "good play": "v-good", "reasonable": "v-good", "close spot": "v-close", "mistake": "v-bad", "big mistake": "v-bad", "spot study": "v-study" };
 const vClass = v => VERDICTS[String(v || "").toLowerCase()] || "v-none";
 function viewHands() {
   if (S.handId) return viewHand();
@@ -676,11 +680,16 @@ function viewHand() {
   let body;
   if (h.analysis) {
     const p = parseAnalysis(h.analysis);
-    body = `<div class="verdict-banner ${vClass(h.verdict)}"><span class="eyebrow" style="color:inherit">Verdict</span><b>${esc(h.verdict || "Review")}</b>${h.summary ? `<span style="color:var(--ink)">${cardify(esc(h.summary))}</span>` : ""}</div>
+    const stale = h.actionAt && h.analysedAt && h.actionAt > h.analysedAt;
+    body = `${stale ? `<div class="notice">You've added what you did since this review. Tap <b>Ask Claude again</b> below, then paste the new reply under <b>Replace with a new review</b> to get it graded.</div>` : ""}
+      <div class="verdict-banner ${vClass(h.verdict)}"><span class="eyebrow" style="color:inherit">${h.verdict === "Spot study" ? "Not graded · you didn't say what you did" : "Verdict"}</span><b>${esc(h.verdict || "Review")}</b>${h.summary ? `<span style="color:var(--ink)">${cardify(esc(h.summary))}</span>` : ""}
+        ${p.bestPlay ? `<div class="bestplay"><span class="eyebrow" style="color:inherit">Best play</span><b>${cardify(esc(p.bestPlay))}</b></div>` : ""}</div>
       <section class="card"><div class="analysis">${md(p.body)}</div>
       ${(h.thread || []).map(t => `<div class="qa"><div class="q">${t.q ? "You: " + cardify(esc(t.q)) : "Follow-up from Claude"}</div><div class="analysis">${md(t.a)}</div></div>`).join("")}
       <details class="guide" style="margin-top:14px"><summary>Add a follow-up answer from Claude</summary>
         <form class="stack" data-form="more" style="margin-top:10px"><textarea class="input" id="more-text" rows="4" placeholder="Paste Claude's follow-up reply"></textarea><button class="btn primary">Add to review</button></form></details>
+      <details class="guide" style="margin-top:10px" ${stale ? "open" : ""}><summary>Replace with a new review</summary>
+        <form class="stack" data-form="review" style="margin-top:10px"><textarea class="input" id="review-text" rows="4" placeholder="Paste Claude's new reply, starting from VERDICT"></textarea><div class="err" id="review-err"></div><button class="btn primary">Save new review</button></form></details>
       </section>`;
   } else {
     body = `<section class="card"><div class="card-head"><h3>Get Claude's review</h3></div>
@@ -695,7 +704,10 @@ function viewHand() {
   return `<div class="stack">
     <div class="card-head" style="margin:0"><button class="back" data-action="close-hand">‹ Hands</button><span class="muted" style="font-size:13px">${esc(h.game || "")}${h.stakes ? " · " + esc(h.stakes) : ""}</span></div>
     <section class="card"><div class="card-head"><h3>Your notes</h3><span class="muted" style="font-size:12.5px">${fmtDate(new Date(h.createdAt).toISOString().slice(0, 10), true)}</span></div>
-      <pre class="handtext">${cardify(esc(h.text))}</pre>${h.context ? `<p class="foot" style="margin:8px 0 0">Context: ${esc(h.context)}</p>` : ""}</section>
+      <pre class="handtext">${cardify(esc(h.text))}</pre>${h.context ? `<p class="foot" style="margin:8px 0 0">Context: ${esc(h.context)}</p>` : ""}
+      <div id="did-zone">${h.action
+        ? `<div class="did"><span><span class="muted">What I did:</span> <b>${cardify(esc(h.action))}</b></span><button class="linkbtn" data-action="edit-action">Edit</button></div>`
+        : `<div class="did"><span class="muted">You haven't said what you did at the end.</span><button class="linkbtn" data-action="edit-action">Add what I did</button></div>`}</div></section>
     ${body}
     <div class="btnrow" style="margin-top:0">${h.analysis ? copyBtn("Ask Claude again") : ""}<button class="btn danger" data-action="ask-delete-hand">Delete hand</button></div>
     <div id="copy-fallback-2"></div>
@@ -803,6 +815,9 @@ function handForm() {
     ${blindChips("h-stakes")}
     <label class="field"><span>The hand, as written in your notes</span>
       <textarea class="input mono" name="text" rows="9" autofocus placeholder="£1/2, 250 eff. Hero BTN AsQd&#10;UTG limp, CO limp, H r 12, BB c, UTG c, CO f&#10;F (38) Qh7c2s: BB x, UTG x, H b 25, BB c, UTG f&#10;T (88) 5d: BB x, H b 60, BB jam 210. ?"></textarea></label>
+    <label class="field"><span>What I did at the end <span class="muted" style="font-weight:400">optional</span></span>
+      <input class="input" name="action" placeholder="e.g. called the jam, folded, raised to 60" autocomplete="off"></label>
+    <p class="foot" style="margin:-6px 0 0">Fill this in to get your play graded. Leave it empty if you just want to know the right play.</p>
     <label class="field"><span>Anything else? <span class="muted" style="font-weight:400">optional</span></span>
       <input class="input" name="context" placeholder="Villain reads, table dynamic, what you're unsure about"></label>
     <details class="guide"><summary>Shorthand that works well</summary>
@@ -867,9 +882,10 @@ async function submitSession(form) {
 function parseAnalysis(text) {
   const verdict = (text.match(/^\s*\**VERDICT:?\**\s*:?\s*(.+)$/im) || [])[1]?.replace(/\*+/g, "").trim() || "";
   const summary = (text.match(/^\s*\**SUMMARY:?\**\s*:?\s*(.+)$/im) || [])[1]?.replace(/\*+/g, "").trim() || "";
-  const body = text.replace(/^\s*\**VERDICT.*$/im, "").replace(/^\s*\**SUMMARY.*$/im, "").trim();
+  const bestPlay = (text.match(/^\s*\**BEST PLAY:?\**\s*:?\s*(.+)$/im) || [])[1]?.replace(/\*+/g, "").trim() || "";
+  const body = text.replace(/^\s*\**VERDICT.*$/im, "").replace(/^\s*\**SUMMARY.*$/im, "").replace(/^\s*\**BEST PLAY.*$/im, "").trim();
   const v = Object.keys(VERDICTS).sort((a, b) => b.length - a.length).find(k => verdict.toLowerCase().includes(k));
-  return { verdict: v ? v[0].toUpperCase() + v.slice(1) : verdict, summary, body };
+  return { verdict: v ? v[0].toUpperCase() + v.slice(1) : verdict, summary, bestPlay, body };
 }
 function playerProfile() {
   const cashB = blindsList();
@@ -886,16 +902,22 @@ Hand notes:
 """
 ${h.text}
 """
+${h.action ? `What the player actually did at the final decision: ${h.action}` : `The player did not say separately what they did at the final decision. Often the notes stop at the spot they were unsure about.`}
+
+First identify the final (key) decision point in the hand. Then grade the player's play like this:
+- If you know what the player did at that final decision (from the line above, or because the notes clearly say it), VERDICT grades their play with most weight on that decision.
+- If you do not know what they did there, VERDICT must be exactly "Spot study". Do not grade an action they never told you about. Still mark any earlier decisions they did make in the street-by-street section.
 
 Reply in exactly this structure:
-VERDICT: <exactly one of: Good play | Reasonable | Close spot | Mistake | Big mistake>
-SUMMARY: <one sentence naming the single most important decision in the hand and whether they got it right>
+VERDICT: <exactly one of: Good play | Reasonable | Close spot | Mistake | Big mistake | Spot study>
+BEST PLAY: <the best action at the final decision in a few words, with sizing, e.g. "Call" or "Raise to £45" or "Fold">
+SUMMARY: <one sentence: what the key decision was and, if you know what they did, whether they got it right>
 
 ## The hand as I read it
 <a compact street-by-street restatement, one line per street, with pot size and stack-to-pot ratio where you can work them out>
 
 ## Street by street
-<for each street where the player made a decision: start the paragraph with "✓", "~" or "✗" (good, fine, mistake), say what they did, what you recommend (action and sizing in £ and bb), and why: ranges, pot odds, equity, blockers and player-pool tendencies. If the key decision is still to come (the notes end with a question), answer it clearly.>
+<for each street where the player made a decision: start the paragraph with "✓", "~" or "✗" (good, fine, mistake), say what they did, what you recommend (action and sizing in £ and bb), and why: ranges, pot odds, equity, blockers and player-pool tendencies. For the final decision, always say clearly what to do and why, even if the player didn't say what they did.>
 
 ## What to take away
 <2 to 4 bullet points they can apply at the table next time>
@@ -907,7 +929,7 @@ async function submitHand(form) {
   const text = String(fd.get("text") || "").trim();
   if (text.length < 8) return err.textContent = "Paste or type the hand first.";
   if (!needDb()) return;
-  const data = { text, game: fd.get("game"), stakes: String(fd.get("stakes") || "").trim(), context: String(fd.get("context") || "").trim(), createdAt: Date.now(), status: "saved" };
+  const data = { text, game: fd.get("game"), stakes: String(fd.get("stakes") || "").trim(), context: String(fd.get("context") || "").trim(), action: String(fd.get("action") || "").trim(), createdAt: Date.now(), status: "saved" };
   const btn = form.querySelector(".btn.primary"); btn.disabled = true;
   try {
     const ref = await S.db.collection("hands").add(data);
@@ -955,6 +977,11 @@ document.addEventListener("click", async e => {
   if (a === "manage-venues") { openSheet(venuesSheet()); return; }
   if (a === "fill-venues") { openSheet(fillSheet()); updateFill($("#sheet-panel form")); return; }
   if (a === "undo-fill") { undoFill(); return; }
+  if (a === "edit-action") {
+    const h = S.hands.find(x => x.id === S.handId);
+    $("#did-zone").innerHTML = `<form class="askbar" data-form="hand-action" style="margin-top:10px"><input class="input" id="did-input" value="${esc(h?.action || "")}" placeholder="e.g. called the jam, folded" autocomplete="off"><button class="btn primary">Save</button></form>`;
+    $("#did-input").focus(); return;
+  }
   if (a === "remove-venue") { const f = t.closest("form"); STORE.venues[f.dataset.type] = (STORE.venues[f.dataset.type] || []).filter(n => n !== f.dataset.name); persist(false); openSheet(venuesSheet()); return; }
   if (a === "lock-now") { lock(); return; }
   if (a === "change-pw") { openSheet(pwSheet()); return; }
@@ -978,11 +1005,17 @@ document.addEventListener("submit", async e => {
   }
   if (f.dataset.form === "pw-change") return changePassword(f);
   if (f.dataset.form === "fill") return applyFill(f);
+  if (f.dataset.form === "hand-action") {
+    const v = $("#did-input").value.trim(), h = S.hands.find(x => x.id === S.handId);
+    if (!h || v === (h.action || "")) { render(); return; }
+    await S.db.doc("hands/" + S.handId).update({ action: v, actionAt: Date.now() });
+    toast(h.analysis ? "Saved. Ask Claude again to get it graded." : "Saved"); return;
+  }
   if (f.dataset.form === "review") {
     const text = $("#review-text").value.trim();
     if (text.length < 40) return $("#review-err").textContent = "Paste Claude's full reply, starting from VERDICT.";
     const p = parseAnalysis(text);
-    await S.db.doc("hands/" + S.handId).update({ status: "done", analysis: text, verdict: p.verdict, summary: p.summary, thread: [], analysedAt: Date.now() });
+    await S.db.doc("hands/" + S.handId).update({ status: "done", analysis: text, verdict: p.verdict, summary: p.summary, bestPlay: p.bestPlay, thread: [], analysedAt: Date.now() });
     $("#review-text").value = ""; scrollTo(0, 0); toast("Review saved"); return;
   }
   if (f.dataset.form === "more") {
