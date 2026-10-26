@@ -680,8 +680,8 @@ function viewHand() {
   let body;
   if (h.analysis) {
     const p = parseAnalysis(h.analysis);
-    const stale = h.actionAt && h.analysedAt && h.actionAt > h.analysedAt;
-    body = `${stale ? `<div class="notice">You've added what you did since this review. Tap <b>Ask Claude again</b> below, then paste the new reply under <b>Replace with a new review</b> to get it graded.</div>` : ""}
+    const stale = h.analysedAt && Math.max(h.actionAt || 0, h.editedAt || 0) > h.analysedAt;
+    body = `${stale ? `<div class="notice">You've changed this hand since its review. Tap <b>Ask Claude again</b> below, then paste the new reply under <b>Replace with a new review</b> to get it graded.</div>` : ""}
       <div class="verdict-banner ${vClass(h.verdict)}"><span class="eyebrow" style="color:inherit">${h.verdict === "Spot study" ? "Not graded · you didn't say what you did" : "Verdict"}</span><b>${esc(h.verdict || "Review")}</b>${h.summary ? `<span style="color:var(--ink)">${cardify(esc(h.summary))}</span>` : ""}
         ${p.bestPlay ? `<div class="bestplay"><span class="eyebrow" style="color:inherit">Best play</span><b>${cardify(esc(p.bestPlay))}</b></div>` : ""}</div>
       <section class="card"><div class="analysis">${md(p.body)}</div>
@@ -703,7 +703,7 @@ function viewHand() {
   }
   return `<div class="stack">
     <div class="card-head" style="margin:0"><button class="back" data-action="close-hand">‹ Hands</button><span class="muted" style="font-size:13px">${esc(h.game || "")}${h.stakes ? " · " + esc(h.stakes) : ""}</span></div>
-    <section class="card"><div class="card-head"><h3>Your notes</h3><span class="muted" style="font-size:12.5px">${fmtDate(new Date(h.createdAt).toISOString().slice(0, 10), true)}</span></div>
+    <section class="card"><div class="card-head"><h3>Your notes</h3><span style="display:flex;gap:12px;align-items:baseline"><span class="muted" style="font-size:12.5px">${fmtDate(new Date(h.createdAt).toISOString().slice(0, 10), true)}</span><button class="linkbtn" data-action="edit-hand">Edit</button></span></div>
       <pre class="handtext">${cardify(esc(h.text))}</pre>
       <div id="did-zone">${h.action
         ? `<div class="did"><span><span class="muted">What I did:</span> <b>${cardify(esc(h.action))}</b></span><button class="linkbtn" data-action="edit-action">Edit</button></div>`
@@ -809,20 +809,21 @@ function updatePreview(form) {
   ph.textContent = fd.get("start") && fd.get("end") ? dur(h) : "—";
 }
 
-function handForm() {
+function handForm(h) {
   const last = [...S.sessions].sort((a, b) => (b.date || "").localeCompare(a.date || ""))[0];
-  return `<div class="sheet-head"><h2>New hand</h2><button class="x" data-action="close-sheet" aria-label="Close">×</button></div>
-  <form class="stack" data-form="hand" novalidate>
-    <div class="grid2"><div class="field"><span>Game</span>${segRadio("game", ["Cash", "Tournament"], last?.game || "Cash")}</div>
-      <label class="field"><span>Stakes / level</span><input class="input" id="h-stakes" name="stakes" value="${esc(last?.game === "Cash" ? last.blinds : "")}" placeholder="£1/2"></label></div>
+  const game = h ? h.game || "Cash" : last?.game || "Cash", stakes = h ? h.stakes || "" : (last?.game === "Cash" ? last.blinds : "");
+  return `<div class="sheet-head"><h2>${h ? "Edit hand" : "New hand"}</h2><button class="x" data-action="close-sheet" aria-label="Close">×</button></div>
+  <form class="stack" data-form="hand" data-id="${esc(h?.id || "")}" novalidate>
+    <div class="grid2"><div class="field"><span>Game</span>${segRadio("game", ["Cash", "Tournament"], game)}</div>
+      <label class="field"><span>Stakes / level</span><input class="input" id="h-stakes" name="stakes" value="${esc(stakes)}" placeholder="£1/2"></label></div>
     ${blindChips("h-stakes")}
     <label class="field"><span>The hand, as written in your notes</span>
-      <textarea class="input mono" name="text" rows="9" autofocus placeholder="£1/2, 250 eff. Hero BTN AsQd&#10;UTG limp, CO limp, H r 12, BB c, UTG c, CO f&#10;F (38) Qh7c2s: BB x, UTG x, H b 25, BB c, UTG f&#10;T (88) 5d: BB x, H b 60, BB jam 210. ?"></textarea></label>
+      <textarea class="input mono" name="text" rows="9" autofocus placeholder="£1/2, 250 eff. Hero BTN AsQd&#10;UTG limp, CO limp, H r 12, BB c, UTG c, CO f&#10;F (38) Qh7c2s: BB x, UTG x, H b 25, BB c, UTG f&#10;T (88) 5d: BB x, H b 60, BB jam 210. ?">${esc(h?.text || "")}</textarea></label>
     <label class="field"><span>What I did at the end <span class="muted" style="font-weight:400">optional</span></span>
-      <input class="input" name="action" placeholder="e.g. called the jam, folded, raised to 60" autocomplete="off"></label>
+      <input class="input" name="action" value="${esc(h?.action || "")}" placeholder="e.g. called the jam, folded, raised to 60" autocomplete="off"></label>
     <p class="foot" style="margin:-6px 0 0">Fill this in to get your play graded. Leave it empty if you just want to know the right play.</p>
     <label class="field"><span>Anything else? <span class="muted" style="font-weight:400">optional</span></span>
-      <input class="input" name="context" placeholder="Reads, what you're unsure about, showdown: villain showed 8h9h"></label>
+      <input class="input" name="context" value="${esc(h?.context || "")}" placeholder="Reads, what you're unsure about, showdown: villain showed 8h9h"></label>
     <details class="guide"><summary>Shorthand that works well</summary>
       <pre>Positions  UTG HJ CO BTN SB BB · Hero = H
 Cards      AsKd  Th9h  (s h d c)
@@ -833,7 +834,7 @@ Pot        (38) before the street
 Stacks     250 eff  or  100bb</pre>
       <p class="muted" style="margin:8px 0 0">Write it however you normally do. If something's unclear the review says what it assumed.</p></details>
     <div class="err" id="form-err"></div>
-    <button class="btn primary block">Save hand</button>
+    <button class="btn primary block">${h ? "Save changes" : "Save hand"}</button>
   </form>`;
 }
 
@@ -936,6 +937,17 @@ async function submitHand(form) {
   if (!needDb()) return;
   const data = { text, game: fd.get("game"), stakes: String(fd.get("stakes") || "").trim(), context: String(fd.get("context") || "").trim(), action: String(fd.get("action") || "").trim(), createdAt: Date.now(), status: "saved" };
   const btn = form.querySelector(".btn.primary"); btn.disabled = true;
+  const id = form.dataset.id;
+  if (id) {   // editing: keep the date, status and any saved review
+    const h = S.hands.find(x => x.id === id); if (!h) return closeSheet();
+    const { createdAt, status, ...changes } = data;
+    const graded = ["text", "game", "stakes", "action"].some(k => (h[k] || "") !== changes[k]);
+    try {
+      await S.db.doc("hands/" + id).update({ ...changes, ...(graded ? { editedAt: Date.now() } : {}) });
+      closeSheet(); toast(graded && h.analysis ? "Saved. Ask Claude again for an updated review." : "Hand updated");
+    } catch (e) { err.textContent = writeErr(e); btn.disabled = false; }
+    return;
+  }
   try {
     const ref = await S.db.collection("hands").add(data);
     closeSheet();
@@ -982,6 +994,7 @@ document.addEventListener("click", async e => {
   if (a === "manage-venues") { openSheet(venuesSheet()); return; }
   if (a === "fill-venues") { openSheet(fillSheet()); updateFill($("#sheet-panel form")); return; }
   if (a === "undo-fill") { undoFill(); return; }
+  if (a === "edit-hand") { const h = S.hands.find(x => x.id === S.handId); if (h) openSheet(handForm(h)); return; }
   if (a === "edit-context") {
     const h = S.hands.find(x => x.id === S.handId);
     $("#ctx-zone").innerHTML = `<form class="stack" data-form="hand-context" style="margin-top:10px;gap:8px"><textarea class="input" id="ctx-input" rows="2" placeholder="Reads, what you're unsure about, showdown: villain showed 8h9h">${esc(h?.context || "")}</textarea><button class="btn primary">Save</button></form>`;
@@ -1058,7 +1071,7 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape" && !$("#sheet").hidden) closeSheet();
 });
 
-const APP_VERSION = "7";
+const APP_VERSION = "8";
 // ---------- on-device storage (encrypted with your password) ----------
 // Same small API the page used with Claude's database. Data is kept in memory while
 // unlocked and saved to localStorage encrypted with AES-GCM, keyed from the password.
