@@ -1058,6 +1058,7 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape" && !$("#sheet").hidden) closeSheet();
 });
 
+const APP_VERSION = "7";
 // ---------- on-device storage (encrypted with your password) ----------
 // Same small API the page used with Claude's database. Data is kept in memory while
 // unlocked and saved to localStorage encrypted with AES-GCM, keyed from the password.
@@ -1212,6 +1213,7 @@ function settingsSheet() {
     <input type="file" id="restore-file" class="sr-file" accept=".json,application/json">
     <h3 style="margin-top:8px">Password</h3>
     <div class="btnrow" style="margin:0"><button class="btn" data-action="change-pw">Change password</button><button class="btn" data-action="lock-now">Lock now</button></div>
+    <p class="foot">App version ${APP_VERSION}</p>
     <p class="foot">Restoring adds the sessions and hands in the file. Entries already on this phone are kept, so restoring the same file twice doesn't create duplicates.</p>
   </div>`;
 }
@@ -1259,7 +1261,11 @@ S.db = localDb;
 S.locked = true;
 showLock(readVault() ? "unlock" : "setup");
 try { navigator.storage?.persist?.(); } catch (e) {}
-if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+if ("serviceWorker" in navigator) addEventListener("load", () => {
+  navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then(reg => {
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) reg.update().catch(() => {}); });
+  }).catch(() => {});
+});
 </script>
 </body>
 </html>
