@@ -704,10 +704,13 @@ function viewHand() {
   return `<div class="stack">
     <div class="card-head" style="margin:0"><button class="back" data-action="close-hand">‹ Hands</button><span class="muted" style="font-size:13px">${esc(h.game || "")}${h.stakes ? " · " + esc(h.stakes) : ""}</span></div>
     <section class="card"><div class="card-head"><h3>Your notes</h3><span class="muted" style="font-size:12.5px">${fmtDate(new Date(h.createdAt).toISOString().slice(0, 10), true)}</span></div>
-      <pre class="handtext">${cardify(esc(h.text))}</pre>${h.context ? `<p class="foot" style="margin:8px 0 0">Context: ${esc(h.context)}</p>` : ""}
+      <pre class="handtext">${cardify(esc(h.text))}</pre>
       <div id="did-zone">${h.action
         ? `<div class="did"><span><span class="muted">What I did:</span> <b>${cardify(esc(h.action))}</b></span><button class="linkbtn" data-action="edit-action">Edit</button></div>`
-        : `<div class="did"><span class="muted">You haven't said what you did at the end.</span><button class="linkbtn" data-action="edit-action">Add what I did</button></div>`}</div></section>
+        : `<div class="did"><span class="muted">You haven't said what you did at the end.</span><button class="linkbtn" data-action="edit-action">Add what I did</button></div>`}</div>
+      <div id="ctx-zone">${h.context
+        ? `<div class="did"><span><span class="muted">Anything else:</span> ${cardify(esc(h.context))}</span><button class="linkbtn" data-action="edit-context">Edit</button></div>`
+        : `<div class="did"><span class="muted">Reads or showdown info?</span><button class="linkbtn" data-action="edit-context">Add</button></div>`}</div></section>
     ${body}
     <div class="btnrow" style="margin-top:0">${h.analysis ? copyBtn("Ask Claude again") : ""}<button class="btn danger" data-action="ask-delete-hand">Delete hand</button></div>
     <div id="copy-fallback-2"></div>
@@ -819,7 +822,7 @@ function handForm() {
       <input class="input" name="action" placeholder="e.g. called the jam, folded, raised to 60" autocomplete="off"></label>
     <p class="foot" style="margin:-6px 0 0">Fill this in to get your play graded. Leave it empty if you just want to know the right play.</p>
     <label class="field"><span>Anything else? <span class="muted" style="font-weight:400">optional</span></span>
-      <input class="input" name="context" placeholder="Villain reads, table dynamic, what you're unsure about"></label>
+      <input class="input" name="context" placeholder="Reads, what you're unsure about, showdown: villain showed 8h9h"></label>
     <details class="guide"><summary>Shorthand that works well</summary>
       <pre>Positions  UTG HJ CO BTN SB BB · Hero = H
 Cards      AsKd  Th9h  (s h d c)
@@ -897,12 +900,14 @@ function analysisPrompt(h) {
 
 The player wrote this hand quickly in their own shorthand. Decode it carefully. Common notation: positions UTG/UTG1/LJ/HJ/CO/BTN/SB/BB; H or Hero = the player; x = check, b = bet, c = call, r = raise, 3b = 3-bet, f = fold, jam/ai/shove = all-in, lim = limp; F/T/R = flop/turn/river; a number in brackets is usually the pot; "eff" = effective stack. Amounts are in £ unless marked bb. If something essential is ambiguous, state the assumption you made in one short line and continue.
 
-Game: ${h.game || "Cash"}${h.stakes ? `\nStakes / level: ${h.stakes}` : ""}${h.context ? `\nExtra context from the player: ${h.context}` : ""}
+Game: ${h.game || "Cash"}${h.stakes ? `\nStakes / level: ${h.stakes}` : ""}${h.context ? `\nExtra context from the player (may include showdown info): ${h.context}` : ""}
 Hand notes:
 """
 ${h.text}
 """
 ${h.action ? `What the player actually did at the final decision: ${h.action}` : `The player did not say separately what they did at the final decision. Often the notes stop at the spot they were unsure about.`}
+
+Judge every decision only on the information the player had when they made it. If the notes or extra context reveal villain's cards or the result of the hand (for example a showdown), do not let that change the verdict or the best play. Use it only to comment on the read and on what it suggests about that player's tendencies.
 
 First identify the final (key) decision point in the hand. Then grade the player's play like this:
 - If you know what the player did at that final decision (from the line above, or because the notes clearly say it), VERDICT grades their play with most weight on that decision.
@@ -977,6 +982,11 @@ document.addEventListener("click", async e => {
   if (a === "manage-venues") { openSheet(venuesSheet()); return; }
   if (a === "fill-venues") { openSheet(fillSheet()); updateFill($("#sheet-panel form")); return; }
   if (a === "undo-fill") { undoFill(); return; }
+  if (a === "edit-context") {
+    const h = S.hands.find(x => x.id === S.handId);
+    $("#ctx-zone").innerHTML = `<form class="stack" data-form="hand-context" style="margin-top:10px;gap:8px"><textarea class="input" id="ctx-input" rows="2" placeholder="Reads, what you're unsure about, showdown: villain showed 8h9h">${esc(h?.context || "")}</textarea><button class="btn primary">Save</button></form>`;
+    $("#ctx-input").focus(); return;
+  }
   if (a === "edit-action") {
     const h = S.hands.find(x => x.id === S.handId);
     $("#did-zone").innerHTML = `<form class="askbar" data-form="hand-action" style="margin-top:10px"><input class="input" id="did-input" value="${esc(h?.action || "")}" placeholder="e.g. called the jam, folded" autocomplete="off"><button class="btn primary">Save</button></form>`;
@@ -1005,6 +1015,12 @@ document.addEventListener("submit", async e => {
   }
   if (f.dataset.form === "pw-change") return changePassword(f);
   if (f.dataset.form === "fill") return applyFill(f);
+  if (f.dataset.form === "hand-context") {
+    const v = $("#ctx-input").value.trim(), h = S.hands.find(x => x.id === S.handId);
+    if (!h || v === (h.context || "")) { render(); return; }
+    await S.db.doc("hands/" + S.handId).update({ context: v });
+    toast("Saved"); return;
+  }
   if (f.dataset.form === "hand-action") {
     const v = $("#did-input").value.trim(), h = S.hands.find(x => x.id === S.handId);
     if (!h || v === (h.action || "")) { render(); return; }
