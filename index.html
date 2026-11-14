@@ -114,6 +114,7 @@ body:not(.mode-hands) .hands-only{display:none!important}
 .rec-discard{display:block;margin:22px auto 0;color:var(--muted)}
 .plview{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .masked{color:var(--muted)!important;letter-spacing:.04em}
+.hidden-chart{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--surface-2);border-radius:10px;padding:18px 14px}
 .sr-file{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
 .iconbtn{background:var(--surface);border:1px solid var(--line);border-radius:11px;width:38px;height:38px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted)}
 .iconbtn svg{width:20px;height:20px}
@@ -451,6 +452,11 @@ function ticks(lo, hi, n) {
   return out;
 }
 const CHARTS = {};
+const MASK = `<span class="masked">£•••</span>`;
+const pm = (v, opts) => S.showPL ? money(v, opts) : MASK;          // a profit figure
+const pc = v => S.showPL ? cls(v) : "";                            // its colour
+const pp = v => S.showPL ? pct(v) : `<span class="masked">•••</span>`;   // ROI
+const hiddenChart = () => `<div class="hidden-chart"><span class="muted">Hidden until you tap View</span>${plButton()}</div>`;
 function runChart(id, list) {
   if (list.length < 2) return `<p class="empty-note">The running P&amp;L curve appears once you have two sessions here.</p>`;
   let run = 0;
@@ -534,7 +540,7 @@ function sessionRow(s, running) {
     <div class="date-tile"><b>${d}</b><span>${MONTHS[m - 1]}</span></div>
     <div class="row-main"><div class="t">${what}<span class="tag ${s.game === "Tournament" ? "t-tourn" : ""}">${esc(venueLabel(s))}</span></div>
       <div class="s">${esc(sub)}</div>${s.notes ? `<div class="s">“${esc(s.notes)}”</div>` : ""}</div>
-    <div class="row-amt num"><b class="${cls(pl)}">${money(pl)}</b>${running != null ? `<span>${money(running)}</span>` : ""}</div>
+    <div class="row-amt num"><b class="${pc(pl)}">${pm(pl)}</b>${running != null ? `<span>${pm(running)}</span>` : ""}</div>
   </button>`;
 }
 function runningMap() { const m = {}; let r = 0; for (const s of sorted()) { r = Math.round((r + (plOf(s) ?? 0)) * 100) / 100; m[s.id] = r; } return m; }
@@ -560,12 +566,12 @@ function viewHome() {
       <div class="kpis num">
         <div class="kpi"><b>${st.n}</b><span>sessions</span></div>
         <div class="kpi"><b>${hrs(st.hours)}</b><span>played</span></div>
-        <div class="kpi"><b class="${cls(st.perHr)}">${st.perHr == null ? "—" : money(st.perHr, { dec: 2 })}</b><span>per hour</span></div>
+        <div class="kpi"><b class="${pc(st.perHr)}">${st.perHr == null ? "—" : pm(st.perHr, { dec: 2 })}</b><span>per hour</span></div>
         <div class="kpi"><b>${pct(st.winRate)}</b><span>win rate</span></div>
       </div></section>
     ${dataNudge()}
     ${liveCard()}
-    <section class="card"><div class="card-head"><h3>Running P&amp;L</h3><span class="muted" style="font-size:12.5px">tap the chart</span></div>${runChart("home", all)}</section>
+    <section class="card"><div class="card-head"><h3>Running P&amp;L</h3><span class="muted" style="font-size:12.5px">${S.showPL ? "tap the chart" : ""}</span></div>${S.showPL ? runChart("home", all) : hiddenChart()}</section>
     <section class="card"><div class="card-head"><h3>Recent sessions</h3><button class="linkbtn" data-tab="sessions">See all</button></div>
       ${recent.length ? `<div class="rows">${recent.map(s => sessionRow(s, rm[s.id])).join("")}</div>` : emptySessions()}</section>
     <section class="card"><div class="card-head"><h3>Unsure about a spot?</h3></div>
@@ -596,14 +602,14 @@ function viewSessions() {
   const chip = (k, l) => `<button class="chip" aria-pressed="${F === k}" data-filter="${esc(k)}">${esc(l)}</button>`;
   const named = [...new Set(["Casino", "Private", "Home"].flatMap(venuesFor))].filter(n => S.sessions.some(s => s.venueName === n));
   return `<div class="stack">
-    <div class="card-head" style="margin:0"><h2>Sessions</h2><span class="muted num">${st.n} · <b class="${cls(st.pl)}">${money(st.pl)}</b></span></div>
+    <div class="card-head" style="margin:0;align-items:center"><h2>Sessions</h2><span class="muted num" style="display:flex;gap:10px;align-items:center">${st.n} · <b class="${pc(st.pl)}">${pm(st.pl)}</b>${plButton()}</span></div>
     <div class="chips">${chip("all", "All")}${chip("cash", "Cash")}${chip("tourn", "Tournament")}${chip("public", "Public")}${chip("home", "Home")}${chip("casino", "Casino")}${chip("private", "Private game")}</div>
     ${named.length ? `<div class="chips">${named.map(n => chip("v:" + n, n)).join("")}</div>` : ""}
     ${list.length ? groups.map(g => { const gs = stats(g.items); const { y, m } = dParts(g.k + "-01");
-      return `<div><div class="month-head"><h3>${["January","February","March","April","May","June","July","August","September","October","November","December"][m - 1]} ${y}</h3><span class="num muted">${gs.n} · <b class="${cls(gs.pl)}">${money(gs.pl)}</b></span></div>
+      return `<div><div class="month-head"><h3>${["January","February","March","April","May","June","July","August","September","October","November","December"][m - 1]} ${y}</h3><span class="num muted">${gs.n} · <b class="${pc(gs.pl)}">${pm(gs.pl)}</b></span></div>
       <div class="card" style="padding:4px 14px"><div class="rows">${g.items.map(s => sessionRow(s, rm[s.id])).join("")}</div></div></div>`; }).join("") : `<div class="card">${emptySessions()}</div>`}
     ${S.sessions.some(s => !s.venueName) ? `<div class="notice" style="display:flex;gap:10px;align-items:center;justify-content:space-between"><span><b>${S.sessions.filter(s => !s.venueName).length}</b> sessions have no venue yet.</span><button class="btn" data-action="fill-venues">Fill in venues</button></div>` : ""}
-    <p class="foot">Grey figure under each result is your running P&amp;L after that session. Tap a session to edit or delete it.</p>
+    <p class="foot">${S.showPL ? "Grey figure under each result is your running P&amp;L after that session." : "Results are hidden. Tap View to show them."} Tap a session to edit or delete it.</p>
   </div>`;
 }
 
@@ -612,9 +618,9 @@ function breakdown(venue) {
   const cols = [{ h: `All ${venue}`, st: stats(base) }].concat(blindsList(venue).map(b => ({ h: b, st: stats(base.filter(s => s.blinds === b)) })));
   const rowsDef = [
     ["Sessions", s => s.n], ["Winning sessions", s => s.wins], ["Win rate", s => pct(s.winRate)],
-    ["Total P&L", s => `<span class="${cls(s.pl)}">${money(s.pl)}</span>`], ["Avg P&L / session", s => `<span class="${cls(s.avg)}">${money(s.avg, { dec: 2 })}</span>`],
-    ["Biggest win", s => money(s.best)], ["Biggest loss", s => money(s.worst)], ["Total hours", s => hrs(s.hours)],
-    ["Avg £/hr", s => `<span class="${cls(s.perHr)}">${s.perHr == null ? "—" : money(s.perHr, { dec: 2 })}</span>`], ["Total buy-ins", s => money(s.buyIns, { sign: false })], ["ROI", s => `<span class="${cls(s.roi)}">${pct(s.roi)}</span>`],
+    ["Total P&L", s => `<span class="${pc(s.pl)}">${pm(s.pl)}</span>`], ["Avg P&L / session", s => `<span class="${pc(s.avg)}">${pm(s.avg, { dec: 2 })}</span>`],
+    ["Biggest win", s => pm(s.best)], ["Biggest loss", s => pm(s.worst)], ["Total hours", s => hrs(s.hours)],
+    ["Avg £/hr", s => `<span class="${pc(s.perHr)}">${s.perHr == null ? "—" : pm(s.perHr, { dec: 2 })}</span>`], ["Total buy-ins", s => money(s.buyIns, { sign: false })], ["ROI", s => `<span class="${pc(s.roi)}">${pp(s.roi)}</span>`],
   ];
   return `<section class="card"><div class="card-head"><h3>${venue} cash by blinds</h3></div>
     ${base.length ? `<div class="tablewrap"><table class="bk num"><thead><tr><th>Blinds</th>${cols.map(c => `<th>${esc(c.h)}</th>`).join("")}</tr></thead>
@@ -629,7 +635,7 @@ function venueTable(list) {
   if (!rows.length) return "";
   return `<section class="card"><div class="card-head"><h3>By venue</h3><span style="display:flex;gap:14px"><button class="linkbtn" data-action="fill-venues">Fill in</button><button class="linkbtn" data-action="manage-venues">Edit names</button></span></div>
     <div class="tablewrap"><table class="bk num"><thead><tr><th>Venue</th><th>Sessions</th><th>P&amp;L</th><th>£/hr</th><th>Win rate</th></tr></thead><tbody>
-    ${rows.map(r => `<tr><td><span style="color:var(--ink);font-weight:600">${esc(r.name || "No name")}</span> <span class="tag">${r.type}</span></td><td>${r.st.n}</td><td class="${cls(r.st.pl)}">${money(r.st.pl)}</td><td class="${cls(r.st.perHr)}">${r.st.perHr == null ? "—" : money(r.st.perHr, { dec: 2 })}</td><td>${pct(r.st.winRate)}</td></tr>`).join("")}
+    ${rows.map(r => `<tr><td><span style="color:var(--ink);font-weight:600">${esc(r.name || "No name")}</span> <span class="tag">${r.type}</span></td><td>${r.st.n}</td><td class="${pc(r.st.pl)}">${pm(r.st.pl)}</td><td class="${pc(r.st.perHr)}">${r.st.perHr == null ? "—" : pm(r.st.perHr, { dec: 2 })}</td><td>${pct(r.st.winRate)}</td></tr>`).join("")}
     </tbody></table></div>${rows.some(r => !r.name) ? `<p class="foot" style="margin:10px 0 0">“No name” covers sessions logged before venues had names. Use <b>Fill in</b> to set lots at once by day and game type.</p>` : ""}</section>`;
 }
 // ---------- fill in venues by pattern ----------
@@ -668,7 +674,7 @@ function updateFill(form) {
   $("#fblinds-field").hidden = r.game === "Tournament";
   const where = r.group === "Home" ? "Home" : "Public";
   $("#fill-preview").innerHTML = m.length
-    ? `<b class="num" style="font-size:17px;color:var(--ink)">${m.length} ${where} session${m.length === 1 ? "" : "s"}</b><br>${[...m].sort((a, b) => a.date.localeCompare(b.date)).map(s => `${weekday(s.date)} ${fmtDate(s.date)} · ${s.game === "Tournament" ? "Tournament" : esc(s.blinds || "Cash")} · ${money(plOf(s))}`).join("<br>")}`
+    ? `<b class="num" style="font-size:17px;color:var(--ink)">${m.length} ${where} session${m.length === 1 ? "" : "s"}</b><br>${[...m].sort((a, b) => a.date.localeCompare(b.date)).map(s => `${weekday(s.date)} ${fmtDate(s.date)} · ${s.game === "Tournament" ? "Tournament" : esc(s.blinds || "Cash")}${S.showPL ? ` · ${money(plOf(s))}` : ""}`).join("<br>")}`
     : `No ${where} sessions without a venue match this pattern.`;
   const btn = $("#fill-apply");
   btn.disabled = !m.length || !r.name;
@@ -708,13 +714,13 @@ function viewStats() {
     <div class="metrics">
       <div class="metric wide"><div class="plview"><span>Total profit / loss</span>${plButton()}</div><b class="num ${S.showPL ? cls(st.pl) : "masked"}">${S.showPL ? money(st.pl) : "£•••••"}</b></div>
       ${M("Total sessions", st.n)}${M("Winning sessions", st.wins)}
-      ${M("Win rate", pct(st.winRate))}${M("ROI", pct(st.roi), cls(st.roi))}
-      ${M("Biggest win", money(st.best), cls(st.best))}${M("Biggest loss", money(st.worst), cls(st.worst))}
-      ${M("Avg P&amp;L / session", money(st.avg, { dec: 2 }), cls(st.avg))}${M("Avg £/hr", st.perHr == null ? "—" : money(st.perHr, { dec: 2 }), cls(st.perHr))}
+      ${M("Win rate", pct(st.winRate))}${M("ROI", pp(st.roi), pc(st.roi))}
+      ${M("Biggest win", pm(st.best), pc(st.best))}${M("Biggest loss", pm(st.worst), pc(st.worst))}
+      ${M("Avg P&amp;L / session", pm(st.avg, { dec: 2 }), pc(st.avg))}${M("Avg £/hr", st.perHr == null ? "—" : pm(st.perHr, { dec: 2 }), pc(st.perHr))}
       ${M("Total hours played", hrs(st.hours))}${M("Total buy-ins", money(st.buyIns, { sign: false }))}
     </div>
-    <section class="card"><div class="card-head"><h3>Running P&amp;L</h3><span class="muted" style="font-size:12.5px">${seg === "overall" ? "all games" : seg === "cash" ? "cash only" : "tournaments only"}</span></div>${runChart("stats", list)}</section>
-    <section class="card"><div class="card-head"><h3>By month</h3></div>${monthChart(list)}</section>
+    <section class="card"><div class="card-head"><h3>Running P&amp;L</h3><span class="muted" style="font-size:12.5px">${seg === "overall" ? "all games" : seg === "cash" ? "cash only" : "tournaments only"}</span></div>${S.showPL ? runChart("stats", list) : hiddenChart()}</section>
+    <section class="card"><div class="card-head"><h3>By month</h3></div>${S.showPL ? monthChart(list) : hiddenChart()}</section>
     ${venueTable(list)}
     ${breakdown("Home")}
     ${breakdown("Public")}
@@ -1154,7 +1160,7 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape" && !$("#sheet").hidden) closeSheet();
 });
 
-const APP_VERSION = "15";
+const APP_VERSION = "16";
 // ---------- on-device storage (encrypted with your password) ----------
 // Same small API the page used with Claude's database. Data is kept in memory while
 // unlocked and saved to localStorage encrypted with AES-GCM, keyed from the password.
