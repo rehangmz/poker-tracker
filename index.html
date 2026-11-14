@@ -70,6 +70,48 @@ body:not(.mode-hands) .hands-only{display:none!important}
 .entry-ico svg{width:24px;height:24px}
 .or{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;margin-top:6px}
 .or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
+/* quick hand recorder */
+.rec{position:fixed;inset:0;z-index:90;background:var(--bg);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px)}
+.rec-head{display:flex;align-items:center;gap:10px;padding:8px 16px;border-bottom:1px solid var(--line);max-width:560px;width:100%;margin:0 auto}
+.rec-title{flex:1;min-width:0;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rec-title b{font-family:var(--f-display);font-size:17px}
+.rec-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 16px calc(28px + env(safe-area-inset-bottom,0px));max-width:560px;width:100%;margin:0 auto}
+.rbtn{border:1px solid var(--line);background:var(--surface);border-radius:12px;min-height:52px;font-weight:700;font-size:17px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:6px 4px;width:100%;-webkit-user-select:none;user-select:none;touch-action:manipulation}
+.rbtn small{font-size:11.5px;font-weight:600;color:var(--muted)}
+.rbtn.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.rbtn.on small{color:inherit;opacity:.75}
+.rbtn.pri{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.rbtn.pri small{color:inherit;opacity:.8}
+.rbtn.warn{color:var(--neg)}
+.rbtn:disabled{opacity:.25}
+.rbtn:active:not(:disabled){transform:scale(.97)}
+.pos-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.rank-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.suit-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.suit-grid .rbtn{font-size:30px;min-height:62px}
+.slots{display:flex;gap:8px}
+.slot{width:54px;height:70px;border-radius:9px;border:1.5px dashed var(--line);display:flex;align-items:center;justify-content:center;font-size:22px;background:var(--surface)}
+.slot:has(.c){border-style:solid}
+.act-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.size-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.actor{font-size:16px;background:var(--surface-2);border-radius:12px;padding:10px 12px}
+.actor b{font-family:var(--f-display);font-size:18px}
+.actor.me{background:var(--accent-soft)}
+.seats{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--surface)}
+.seat{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:10px;padding:6px 12px;border-top:1px solid var(--line);font-size:14.5px;min-height:42px}
+.seat:first-child{border-top:0}
+.seat.out{color:var(--muted);opacity:.5;min-height:28px;padding-block:2px;font-size:13px}
+.seat.now{background:var(--accent-soft);font-weight:700}
+.seat.skip{cursor:pointer}
+.seat-stack{font-size:12.5px;color:var(--muted);text-decoration:underline dotted;padding:8px 0 8px 6px;cursor:pointer}
+.rec-street{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:15px}
+.rec-street b{font-family:var(--f-display);font-size:21px}
+.rec-street .c{font-size:17px}
+.rec-sum{display:flex;justify-content:space-between;gap:10px;align-items:center;background:var(--surface-2);border-radius:12px;padding:10px 12px;font-size:14px}
+.stepper{display:flex;align-items:center;gap:16px}
+.stepper .rbtn{width:56px}
+.stepper b{font-family:var(--f-display);font-size:22px;min-width:26px;text-align:center}
+.rec-discard{display:block;margin:22px auto 0;color:var(--muted)}
 .sr-file{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
 .iconbtn{background:var(--surface);border:1px solid var(--line);border-radius:11px;width:38px;height:38px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted)}
 .iconbtn svg{width:20px;height:20px}
@@ -281,6 +323,7 @@ details.guide pre{font-family:var(--f-mono);font-size:12.5px;white-space:pre-wra
 </div>
 <div id="toast" class="toast" hidden></div>
 <div id="lock" class="lock"></div>
+<div id="rec" class="rec" hidden></div>
 
 <script>
 "use strict";
@@ -679,15 +722,23 @@ function viewStats() {
 
 const VERDICTS = { "good play": "v-good", "reasonable": "v-good", "close spot": "v-close", "mistake": "v-bad", "big mistake": "v-bad", "spot study": "v-study" };
 const vClass = v => VERDICTS[String(v || "").toLowerCase()] || "v-none";
+function handPill(h) {
+  if (h.verdict) return `<span class="verdict ${vClass(h.verdict)}">${esc(h.verdict)}</span>`;
+  if (h.recorded) return `<span class="verdict ${h.outcome === "won" ? "v-good" : h.outcome === "lost" ? "v-bad" : "v-none"}">${esc(outcomeLabel(h))}</span>`;
+  return `<span class="verdict v-none">Needs review</span>`;
+}
 function viewHands() {
   if (S.handId) return viewHand();
-  const list = [...S.hands].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  const hf = S.hfilter || "all";
+  const list = [...S.hands].filter(h => hf === "all" || (hf === "review" ? (h.flagged || !h.recorded) : h.recorded)).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   return `<div class="stack">
-    <div class="card-head" style="margin:0"><h2>Hand review</h2><button class="btn primary" data-action="new-hand" ${S.readOnly ? "disabled" : ""}>New hand</button></div>
+    <div class="card-head" style="margin:0"><h2>Hands</h2><span style="display:flex;gap:8px"><button class="btn" data-action="new-hand">Type</button><button class="btn primary" data-action="quick-hand">Quick hand</button></span></div>
+    ${hasDraft() ? `<div class="notice" style="display:flex;gap:10px;align-items:center;justify-content:space-between"><span>You have a hand you didn't finish recording.</span><button class="btn" data-action="quick-hand">Continue</button></div>` : ""}
+    ${S.hands.length ? `<div class="chips">${[["all", "All"], ["review", "★ To review"], ["logged", "Recorded"]].map(([k, l]) => `<button class="chip" aria-pressed="${(S.hfilter || "all") === k}" data-action="hfilter" data-v="${k}">${l}</button>`).join("")}</div>` : ""}
     ${!HSTORE.migrated && !STORE && readVault() ? `<div class="notice">Hands you saved before this update are still inside your password-protected stats. Tap <b>My stats</b> and unlock once, and they'll move here for good.</div>` : ""}
     ${list.length ? list.map(h => `<button class="hand-row" data-action="open-hand" data-id="${esc(h.id)}">
-        <div class="meta"><span>${fmtDate(new Date(h.createdAt).toISOString().slice(0, 10), true)} · ${esc(h.game || "")}${h.stakes ? " " + esc(h.stakes) : ""}</span>
-        <span class="verdict ${vClass(h.verdict)}">${h.status === "analysing" ? "Reviewing…" : esc(h.verdict || "Needs review")}</span></div>
+        <div class="meta"><span>${h.flagged ? "★ " : ""}${fmtDate(new Date(h.createdAt).toISOString().slice(0, 10), true)} · ${esc(h.game || "")}${h.stakes ? " " + esc(h.stakes) : ""}</span>
+        ${handPill(h)}</div>
         ${h.summary ? `<div class="sum">${cardify(esc(h.summary))}</div>` : ""}
         <div class="txt">${cardify(esc(h.text))}</div></button>`).join("")
       : `<div class="card empty"><div class="suits"><span class="c-h">A♥</span> <span class="c-s">K♠</span></div>No hands yet. Tap <b>New hand</b> and paste one from your notes, shorthand is fine.</div>`}
@@ -725,6 +776,8 @@ function viewHand() {
     <div class="card-head" style="margin:0"><button class="back" data-action="close-hand">‹ Hands</button><span class="muted" style="font-size:13px">${esc(h.game || "")}${h.stakes ? " · " + esc(h.stakes) : ""}</span></div>
     <section class="card"><div class="card-head"><h3>Your notes</h3><span style="display:flex;gap:12px;align-items:baseline"><span class="muted" style="font-size:12.5px">${fmtDate(new Date(h.createdAt).toISOString().slice(0, 10), true)}</span><button class="linkbtn" data-action="edit-hand">Edit</button></span></div>
       <pre class="handtext">${cardify(esc(h.text))}</pre>
+      ${h.recorded ? `<div class="did"><span><span class="muted">Result:</span> <b class="${cls(h.net)}">${esc(outcomeLabel(h))}</b> <span class="muted">· pot ${esc((h.unit ?? "£") + N(h.pot))}</span></span></div>` : ""}
+      <div class="did"><span class="muted">${h.flagged ? "Marked for review" : "Not marked for review"}</span><button class="linkbtn" data-action="toggle-flag">${h.flagged ? "★ Unmark" : "☆ Mark"}</button></div>
       <div id="did-zone">${h.action
         ? `<div class="did"><span><span class="muted">What I did:</span> <b>${cardify(esc(h.action))}</b></span><button class="linkbtn" data-action="edit-action">Edit</button></div>`
         : `<div class="did"><span class="muted">You haven't said what you did at the end.</span><button class="linkbtn" data-action="edit-action">Add what I did</button></div>`}</div>
@@ -1011,6 +1064,9 @@ document.addEventListener("click", async e => {
   if (a === "copy-prompt") { copyPrompt(t); return; }
   if (a === "settings") { openSheet(settingsSheet()); return; }
   if (a === "go-stats") { goStats(); return; }
+  if (a === "quick-hand") { openRec(); return; }
+  if (a === "hfilter") { S.hfilter = t.dataset.v; render(); return; }
+  if (a === "toggle-flag") { const h = S.hands.find(x => x.id === S.handId); if (h) S.db.doc("hands/" + h.id).update({ flagged: !h.flagged }); return; }
   if (a === "manage-venues") { openSheet(venuesSheet()); return; }
   if (a === "fill-venues") { openSheet(fillSheet()); updateFill($("#sheet-panel form")); return; }
   if (a === "undo-fill") { undoFill(); return; }
@@ -1091,7 +1147,7 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape" && !$("#sheet").hidden) closeSheet();
 });
 
-const APP_VERSION = "9";
+const APP_VERSION = "10";
 // ---------- on-device storage (encrypted with your password) ----------
 // Same small API the page used with Claude's database. Data is kept in memory while
 // unlocked and saved to localStorage encrypted with AES-GCM, keyed from the password.
@@ -1334,6 +1390,363 @@ function copyPrompt(link) {
   };
   try { navigator.clipboard.writeText(text).then(() => toast("Copied. Paste it into Claude"), fallback); } catch (e) { fallback(); }
 }
+
+// ---------- quick hand recorder ----------
+// Records a hand with taps: position, cards, each action, board, result. Generates shorthand notes.
+const QH_CFG = "pst.qh.cfg", QH_DRAFT = "pst.qh.draft";
+const POSITIONS = {
+  3: ["BTN", "SB", "BB"], 4: ["CO", "BTN", "SB", "BB"], 5: ["HJ", "CO", "BTN", "SB", "BB"],
+  6: ["UTG", "HJ", "CO", "BTN", "SB", "BB"], 7: ["UTG", "LJ", "HJ", "CO", "BTN", "SB", "BB"],
+  8: ["UTG", "UTG+1", "LJ", "HJ", "CO", "BTN", "SB", "BB"], 9: ["UTG", "UTG+1", "MP", "LJ", "HJ", "CO", "BTN", "SB", "BB"],
+  10: ["UTG", "UTG+1", "UTG+2", "MP", "LJ", "HJ", "CO", "BTN", "SB", "BB"],
+};
+const STREETS = ["pre", "flop", "turn", "river"], STREET_NAME = { pre: "Preflop", flop: "Flop", turn: "Turn", river: "River" };
+const BOARD_LEN = { flop: 3, turn: 4, river: 5 };
+const RANKS = "AKQJT98765432".split(""), SUITS = ["s", "h", "d", "c"];
+const QH_DEFAULT = { game: "Cash", sb: 1, bb: 2, ante: 0, seats: 9, stack: 200, others: 200 };
+let R = null, RH = [];   // recorder state and undo history
+
+function qcfg() { try { return { ...QH_DEFAULT, ...(JSON.parse(localStorage.getItem(QH_CFG)) || {}) }; } catch (e) { return { ...QH_DEFAULT }; } }
+function saveCfg(c) { try { localStorage.setItem(QH_CFG, JSON.stringify(c)); } catch (e) {} }
+function saveDraft() { try { if (R && R.step !== "setup") localStorage.setItem(QH_DRAFT, JSON.stringify(R)); else localStorage.removeItem(QH_DRAFT); } catch (e) {} }
+function hasDraft() { try { return !!localStorage.getItem(QH_DRAFT); } catch (e) { return false; } }
+const isCash = () => R.cfg.game === "Cash";
+const N = n => { const v = Math.round(n * 100) / 100; return v % 1 ? v.toFixed(2) : String(v); };
+const A = n => (isCash() ? "£" : "") + (() => { const v = Math.round(n * 100) / 100; return v % 1 ? v.toFixed(2) : v.toLocaleString("en-GB"); })();
+const stepAmt = () => isCash() ? (R.cfg.bb >= 1 ? 1 : 0.05) : Math.max(1, R.cfg.bb / 4);
+const roundAmt = n => { const s = stepAmt(); return Math.round(Math.round(n / s) * s * 100) / 100; };
+const preOrder = () => POSITIONS[R.cfg.seats];
+const postOrder = () => { const o = preOrder(); return [...o.filter(p => p === "SB" || p === "BB"), ...o.filter(p => p !== "SB" && p !== "BB")]; };
+const actOrder = () => R.street === "pre" ? preOrder() : postOrder();
+const P = pos => R.players.find(p => p.pos === pos);
+const potTotal = () => R.players.reduce((a, p) => a + p.inv, 0);
+const live = () => R.players.filter(p => !p.folded);
+const needs = p => !p.folded && !p.allin && (!p.acted || p.bet < R.curBet);
+const cardHtml = c => !c ? "" : c === "?" ? `<span class="muted">?</span>` : `<span class="c c-${c[1]}">${c[0]}${SUIT[c[1]]}</span>`;
+const nameOf = pos => pos === R.hero.pos ? "You" : pos;
+
+function nextActor(fromPos) {
+  const o = actOrder(), i = fromPos == null ? -1 : o.indexOf(fromPos);
+  for (let k = 1; k <= o.length; k++) { const p = P(o[(i + k) % o.length]); if (needs(p)) return p.pos; }
+  return null;
+}
+// Players still to act this street, in order, from the current actor up to and including you.
+function upcoming() {
+  const o = actOrder(), out = []; if (!R.cur) return out;
+  const i = o.indexOf(R.cur);
+  for (let k = 0; k < o.length; k++) {
+    const p = P(o[(i + k) % o.length]);
+    if (k === 0 || needs(p)) { out.push(p.pos); if (p.pos === R.hero.pos) break; }
+  }
+  return out;
+}
+function snap() { RH.push(JSON.stringify(R)); if (RH.length > 300) RH.shift(); }
+
+function startHand(heroPos) {
+  const c = { ...R.cfg }; saveCfg(c);
+  const players = POSITIONS[c.seats].map(pos => { const st = +(pos === heroPos ? c.stack : c.others) || 0; return { pos, stack: st, left: st, inv: 0, bet: 0, folded: false, allin: false, acted: false, shown: [] }; });
+  R = { v: 1, cfg: c, step: "cards", hero: { pos: heroPos, cards: [] }, board: [], street: "pre", players, log: [], pots: {},
+    curBet: 0, lastRaise: +c.bb, cur: null, result: { outcome: "", flag: false, note: "" }, pick: { target: "hero", rank: null }, ui: {} };
+  const post = (pos, amt, blind) => { const p = P(pos); if (!p || !amt) return; const a = Math.min(amt, p.left); p.left -= a; p.inv += a; if (blind) p.bet += a; if (!p.left) p.allin = true; };
+  if (c.game === "Tournament" && +c.ante) post("BB", +c.ante, false);
+  post("SB", +c.sb, true); post("BB", +c.bb, true);
+  R.curBet = +c.bb; R.cur = nextActor(null);
+}
+function act(type, to, quiet) {
+  if (!quiet) snap();
+  const p = P(R.cur); if (!p) return;
+  let a = type;
+  if (type === "c") { const add = Math.min(R.curBet - p.bet, p.left); p.bet += add; p.left -= add; p.inv += add; if (!p.left) p.allin = true; }
+  else if (type === "f") p.folded = true;
+  else if (type === "r") {
+    to = Math.min(to, p.bet + p.left);
+    const base = R.curBet === 0 ? "b" : "r", add = to - p.bet;
+    p.bet = to; p.left -= add; p.inv += add;
+    if (!p.left) p.allin = true;
+    if (to > R.curBet) {
+      const inc = to - R.curBet; if (inc >= R.lastRaise) R.lastRaise = inc;
+      R.curBet = to; R.players.forEach(q => { if (q !== p) q.acted = false; });
+      a = p.allin ? "ai" : base;
+    } else a = "c";   // an all-in for less than the bet is a call
+  }
+  p.acted = true;
+  R.log.push({ s: R.street, pos: p.pos, a, to: p.bet, ai: p.allin });
+  advance(p.pos);
+}
+function advance(fromPos) {
+  if (P(R.hero.pos).folded || live().length === 1) return toResult();
+  const nx = nextActor(fromPos);
+  if (nx) { R.cur = nx; return; }
+  endStreet();
+}
+function endStreet() {
+  R.players.forEach(p => { p.bet = 0; p.acted = false; });
+  R.curBet = 0; R.lastRaise = +R.cfg.bb; R.cur = null; R.ui = {};
+  if (R.street === "river") return toResult();
+  R.street = STREETS[STREETS.indexOf(R.street) + 1];
+  R.pots[R.street] = potTotal();
+  R.step = "board"; R.pick = { target: "board", rank: null };
+}
+function boardDone() {
+  if (live().filter(p => !p.allin).length <= 1) {   // nobody left to bet: run out the board
+    if (R.street === "river") return toResult();
+    R.street = STREETS[STREETS.indexOf(R.street) + 1]; R.pots[R.street] = potTotal();
+    R.pick = { target: "board", rank: null }; return;
+  }
+  R.step = "act"; R.cur = nextActor(null);
+}
+function toResult() {
+  R.step = "result"; R.cur = null; R.ui = {}; R.pick = { target: "", rank: null };
+  const h = P(R.hero.pos);
+  R.result.outcome = h.folded ? "folded" : live().length === 1 ? "won" : "";
+}
+function skipTo(target) {
+  snap(); let guard = 0;
+  while (R.step === "act" && R.cur && R.cur !== target && guard++ < 20) act(R.curBet - P(R.cur).bet <= 0 ? "x" : "f", 0, true);
+}
+// cards
+function pickTarget() { const t = R.pick.target; return t === "hero" ? R.hero.cards : t === "board" ? R.board : t.startsWith("show:") ? P(t.slice(5)).shown : null; }
+function usedCards() { return new Set([...R.hero.cards, ...R.board, ...R.players.flatMap(p => p.shown)].filter(c => c && c !== "?")); }
+function addCard(card) {
+  snap(); const arr = pickTarget(); if (!arr) return;
+  arr.push(card); R.pick.rank = null;
+  const t = R.pick.target;
+  if (t === "hero" && arr.length === 2) R.step = "act";
+  else if (t === "board" && arr.length === BOARD_LEN[R.street]) boardDone();
+  else if (t.startsWith("show:") && arr.length === 2) R.pick = { target: "", rank: null };
+}
+// money
+function heroNet() {
+  const h = P(R.hero.pos), others = R.players.filter(p => p !== h);
+  const maxO = Math.max(0, ...others.map(p => p.inv));
+  const win = others.reduce((a, p) => a + Math.min(p.inv, h.inv), 0), risk = Math.min(h.inv, maxO);
+  const o = R.result.outcome;
+  return Math.round((o === "won" ? win : o === "split" ? (win - risk) / 2 : -risk) * 100) / 100;
+}
+function outcomeLabel(h) {
+  const u = h.unit ?? "£", amt = v => u + N(Math.abs(v));
+  if (h.outcome === "won") return `Won ${amt(h.net)}`;
+  if (h.outcome === "lost") return `Lost ${amt(h.net)}`;
+  if (h.outcome === "split") return "Split pot";
+  if (h.outcome === "folded") return h.net < 0 ? `Folded · −${amt(h.net)}` : "Folded";
+  return "";
+}
+// notes in the same shorthand used for typed hands
+function recText() {
+  const c = R.cfg, h = P(R.hero.pos), nm = pos => pos === R.hero.pos ? "H" : pos;
+  const head = (isCash() ? `£${N(c.sb)}/${N(c.bb)}` : `Blinds ${N(c.sb)}/${N(c.bb)}${+c.ante ? ` (BB ante ${N(c.ante)})` : ""}`) + ` · ${c.seats}-handed`;
+  const involved = R.players.filter(p => p === h || !p.folded || R.log.some(l => l.pos === p.pos && l.a !== "f"));
+  const tok = l => { const n = nm(l.pos); if (l.a === "f") return `${n} f`; if (l.a === "x") return `${n} x`; if (l.a === "c") return `${n} c${l.ai ? " (all-in)" : ""}`; return `${n} ${l.a} ${N(l.to)}`; };
+  const lines = [head, `H ${R.hero.pos} ${R.hero.cards.join("")}`, "Stacks: " + involved.map(p => `${nm(p.pos)} ${N(p.stack)}`).join(", ")];
+  for (const s of STREETS) {
+    let acts = R.log.filter(l => l.s === s);
+    if (s === "pre") {   // leave out players who just folded preflop
+      acts = acts.filter(l => !(l.a === "f" && l.pos !== R.hero.pos && !R.log.some(m => m.s === "pre" && m.pos === l.pos && m.a !== "f")));
+      lines.push("Pre: " + (acts.length ? acts.map(tok).join(", ") : "folds to H")); continue;
+    }
+    const cards = s === "flop" ? R.board.slice(0, 3) : s === "turn" ? R.board.slice(3, 4) : R.board.slice(4, 5);
+    if (!cards.length) break;
+    lines.push(`${{ flop: "F", turn: "T", river: "R" }[s]} (${N(R.pots[s])}) ${cards.join("")}${acts.length ? ": " + acts.map(tok).join(", ") : ""}`);
+  }
+  return lines.join("\n");
+}
+function heroDid() {
+  const ls = R.log.filter(l => l.pos === R.hero.pos), l = ls[ls.length - 1];
+  if (!l) return "no decision (everyone folded to me)";
+  const where = l.s === "pre" ? "preflop" : "on the " + l.s, amt = A(l.to);
+  return { f: `folded ${where}`, x: `checked ${where}`, c: `called${l.ai ? " all-in" : ""} ${where}`, b: `bet ${amt} ${where}`, r: `raised to ${amt} ${where}`, ai: `went all-in for ${amt} ${where}` }[l.a];
+}
+function showdownText() {
+  const shown = R.players.filter(p => p.shown.length === 2 && p.pos !== R.hero.pos);
+  return shown.length ? "Showdown: " + shown.map(p => `${p.pos} showed ${p.shown.join("")}`).join(", ") : "";
+}
+function saveRec(next) {
+  if (!R.result.outcome) { R.ui.err = "Choose whether you won, lost or split."; return renderRec(); }
+  const c = R.cfg, net = heroNet();
+  const data = { text: recText(), game: c.game, stakes: isCash() ? `£${N(c.sb)}/${N(c.bb)}` : `${N(c.sb)}/${N(c.bb)}`, action: heroDid(),
+    context: [showdownText(), (R.result.note || "").trim()].filter(Boolean).join(". "),
+    createdAt: Date.now(), status: "saved", recorded: true, flagged: !!R.result.flag, outcome: R.result.outcome, net, pot: Math.round(potTotal() * 100) / 100, unit: isCash() ? "£" : "" };
+  handsDb.add(data);
+  const cfg = { ...c, stack: Math.max(0, Math.round((P(R.hero.pos).stack + net) * 100) / 100) };
+  saveCfg(cfg); RH = [];
+  R = { step: "setup", cfg, ui: {} }; saveDraft();
+  toast(`Hand saved · ${outcomeLabel(data)}`);
+  if (next) renderRec(); else closeRec();
+}
+// screens
+function openRec() {
+  let d = null; try { d = JSON.parse(localStorage.getItem(QH_DRAFT)); } catch (e) {}
+  R = d && d.v === 1 ? d : { step: "setup", cfg: qcfg(), showCfg: !localStorage.getItem(QH_CFG), ui: {} };
+  RH = []; $("#rec").hidden = false; document.body.style.overflow = "hidden"; renderRec();
+}
+function closeRec() { saveDraft(); $("#rec").hidden = true; $("#rec").innerHTML = ""; document.body.style.overflow = ""; render(); }
+function renderRec() {
+  R.ui ||= {}; saveDraft();
+  const s = R.step;
+  const title = s === "setup" ? "<b>Quick hand</b>" : `<b>${R.hero.pos}</b> ${R.hero.cards.map(cardHtml).join("")} <span class="muted">· Pot ${A(potTotal())}</span>`;
+  const body = s === "setup" ? recSetup() : s === "cards" ? recCards() : s === "act" ? recAct() : s === "board" ? recBoard() : recResult();
+  const discard = s === "setup" ? "" : R.ui.discard
+    ? `<div class="confirm" style="margin-top:18px"><b>Discard this hand?</b><div class="btnrow" style="margin-top:10px"><button class="btn" data-r="discardno">Keep it</button><button class="btn danger solid" data-r="discardyes">Discard</button></div></div>`
+    : `<button class="linkbtn rec-discard" data-r="discard">Discard this hand</button>`;
+  $("#rec").innerHTML = `<div class="rec-head"><button class="x" data-r="close" aria-label="Close">×</button><div class="rec-title">${title}</div>
+    <button class="btn small" data-r="undo" ${RH.length ? "" : "disabled"}>Undo</button></div><div class="rec-body">${body}${discard}</div>`;
+}
+function recSetup() {
+  const c = R.cfg;
+  const sum = `${c.game === "Cash" ? `£${N(c.sb)}/${N(c.bb)}` : `Blinds ${N(c.sb)}/${N(c.bb)}${+c.ante ? ` · ante ${N(c.ante)}` : ""}`} · ${c.seats}-handed · You ${A(c.stack)} · Others ${A(c.others)}`;
+  return `<div class="stack">
+    <div class="rec-sum"><span>${sum}</span><button class="linkbtn" data-r="cfg">${R.showCfg ? "Done" : "Change"}</button></div>
+    ${R.showCfg ? recCfgForm() : ""}
+    <h3>Your position</h3>
+    <div class="pos-grid">${POSITIONS[c.seats].map(p => `<button class="rbtn" data-r="pos" data-v="${p}">${p}</button>`).join("")}</div>
+    <p class="foot" style="margin:0">Tap your position to start. These settings are remembered, and your stack updates after each hand you save.</p></div>`;
+}
+function recCfgForm() {
+  const c = R.cfg, stakes = HSTORE.stakes || [];
+  return `<div class="card stack" style="padding:12px">
+    <div class="field"><span>Game</span>${segRadio("rgame", ["Cash", "Tournament"], c.game)}</div>
+    ${stakes.length && c.game === "Cash" ? `<div class="chips wrap">${stakes.map(s => `<button type="button" class="chip" data-r="stakes" data-v="${esc(s)}">${esc(s)}</button>`).join("")}</div>` : ""}
+    <div class="grid2"><label class="field"><span>Small blind</span><input class="input num" inputmode="decimal" data-cfg="sb" value="${c.sb}"></label>
+      <label class="field"><span>Big blind</span><input class="input num" inputmode="decimal" data-cfg="bb" value="${c.bb}"></label></div>
+    ${c.game === "Tournament" ? `<label class="field"><span>BB ante <span style="font-weight:400">(0 if none)</span></span><input class="input num" inputmode="decimal" data-cfg="ante" value="${c.ante || 0}"></label>` : ""}
+    <div class="field"><span>Players at the table</span><div class="stepper"><button type="button" class="rbtn" data-r="seats" data-v="-1">−</button><b>${c.seats}</b><button type="button" class="rbtn" data-r="seats" data-v="1">+</button></div></div>
+    <div class="grid2"><label class="field"><span>Your stack</span><input class="input num" inputmode="decimal" data-cfg="stack" value="${c.stack}"></label>
+      <label class="field"><span>Others' stacks</span><input class="input num" inputmode="decimal" data-cfg="others" value="${c.others}"></label></div>
+    <p class="foot" style="margin:0">Others' stacks is a starting guess. Tap any player's stack while recording to change it.</p></div>`;
+}
+function picker(title, cards, n, extra = "") {
+  const used = usedCards(), r = R.pick.rank;
+  return `<div class="stack"><h3>${title}</h3>
+    <div class="slots">${Array.from({ length: n }, (_, i) => `<span class="slot">${cardHtml(cards[i])}</span>`).join("")}</div>
+    <div class="rank-grid">${RANKS.map(x => `<button class="rbtn ${r === x ? "on" : ""}" data-r="rank" data-v="${x}" ${SUITS.every(s => used.has(x + s)) ? "disabled" : ""}>${x}</button>`).join("")}</div>
+    <div class="suit-grid">${SUITS.map(s => `<button class="rbtn c-${s}" data-r="suit" data-v="${s}" ${!r || used.has(r + s) ? "disabled" : ""}>${SUIT[s]}\uFE0E</button>`).join("")}</div>
+    <p class="foot" style="margin:0">${r ? "Now tap the suit." : "Tap the rank, then the suit."}</p>${extra}</div>`;
+}
+function recCards() {
+  return picker(`Your cards <span class="muted" style="font-weight:500">· ${R.hero.pos}</span>`, R.hero.cards, 2,
+    `<button class="linkbtn" data-r="repos" style="align-self:flex-start">Change position</button>`);
+}
+function recBoard() {
+  const from = { flop: 0, turn: 3, river: 4 }[R.street], n = { flop: 3, turn: 1, river: 1 }[R.street];
+  const before = R.board.slice(0, from).map(cardHtml).join("");
+  return `<div class="rec-street" style="margin-bottom:12px"><b>${STREET_NAME[R.street]}</b>${before ? `<span>${before}</span>` : ""}<span class="muted">Pot ${A(potTotal())}</span></div>
+    ${picker(`${STREET_NAME[R.street]} card${n > 1 ? "s" : ""}`, R.board.slice(from), n, `<button class="linkbtn" data-r="unknown" style="align-self:flex-start">I don't remember</button>`)}`;
+}
+function raiseSizes(p) {
+  const bb = +R.cfg.bb, max = p.bet + p.left, pot = potTotal(), minTo = R.curBet === 0 ? bb : R.curBet + R.lastRaise;
+  let opts;
+  if (R.street === "pre" && R.curBet <= bb) {
+    const limpers = R.log.filter(l => l.s === "pre" && l.a === "c").length;
+    opts = [3, 4, 5, 6].map(x => ({ to: x * bb + limpers * bb, sub: `${x}bb${limpers ? ` +${limpers}` : ""}` }));
+  } else if (R.curBet > 0) opts = [2.5, 3, 4].map(x => ({ to: R.curBet * x, sub: `${x}x` }));
+  else opts = [[1 / 3, "⅓ pot"], [1 / 2, "½ pot"], [2 / 3, "⅔ pot"], [3 / 4, "¾ pot"], [1, "Pot"]].map(([f, sub]) => ({ to: pot * f, sub }));
+  const seen = new Set();
+  return opts.map(o => ({ ...o, to: roundAmt(o.to) })).filter(o => o.to >= minTo && o.to < max && !seen.has(o.to) && seen.add(o.to));
+}
+function recAct() {
+  const p = P(R.cur), toCall = Math.max(0, R.curBet - p.bet), max = p.bet + p.left, isHero = p.pos === R.hero.pos;
+  const callAll = toCall > 0 && toCall >= p.left;
+  const verb = R.curBet === 0 ? "Bet" : "Raise to";
+  const sizes = callAll ? [] : raiseSizes(p);
+  const up = upcoming(), heroAhead = !isHero && up.includes(R.hero.pos);
+  const minTo = R.curBet === 0 ? +R.cfg.bb : R.curBet + R.lastRaise;
+  const board = R.board.filter(c => c).map(cardHtml).join("");
+  return `<div class="stack">
+    <div class="rec-street"><b>${STREET_NAME[R.street]}</b>${board ? `<span>${board}</span>` : ""}<span class="muted">Pot ${A(potTotal())}</span></div>
+    <div class="actor ${isHero ? "me" : ""}"><b>${isHero ? "You" : p.pos}</b> to act${toCall ? ` · ${A(toCall)} to call` : ""}<span class="muted"> · stack ${A(p.left)}</span></div>
+    <div class="act-grid">
+      ${toCall > 0 ? `<button class="rbtn" data-r="f">Fold</button>` : `<button class="rbtn" data-r="x">Check</button>`}
+      ${toCall > 0 ? `<button class="rbtn" data-r="c">${callAll ? "Call all-in" : "Call"}<small>${A(Math.min(toCall, p.left))}</small></button>` : `<button class="rbtn" data-r="f">Fold</button>`}
+    </div>
+    ${callAll ? "" : `<div class="eyebrow">${verb}</div>
+    <div class="size-grid">${sizes.map(o => `<button class="rbtn" data-r="raise" data-v="${o.to}">${A(o.to)}<small>${o.sub}</small></button>`).join("")}
+      <button class="rbtn" data-r="custom">Other<small>amount</small></button>
+      <button class="rbtn warn" data-r="ai">All-in<small>${A(max)}</small></button></div>
+    ${R.ui.custom ? `<div class="askbar" style="margin:0"><input class="input num" id="rec-amt" inputmode="decimal" placeholder="${verb} ${isCash() ? "£" : ""}…"><button class="btn primary" data-r="customgo">${verb}</button></div>
+      <div class="err">${esc(R.ui.err || `Minimum ${A(Math.min(minTo, max))}`)}</div>` : ""}`}
+    ${heroAhead ? `<button class="rbtn pri" data-r="skip" data-v="${R.hero.pos}">${R.curBet - P(R.hero.pos).bet > 0 || R.street === "pre" ? "Folds" : "Checks"} to you</button>` : ""}
+    ${R.ui.edit ? `<div class="askbar" style="margin:0"><input class="input num" id="rec-stack" inputmode="decimal" placeholder="${R.ui.edit} stack"><button class="btn primary" data-r="stackgo">Set ${R.ui.edit} stack</button></div>` : ""}
+    <div class="seats">${actOrder().map(pos => {
+      const q = P(pos), skippable = up.indexOf(pos) > 0;
+      const status = q.folded ? "folded" : q.allin ? `all-in ${A(q.inv)}` : q.bet ? A(q.bet) : "";
+      return `<div class="seat ${q.folded ? "out" : ""} ${pos === R.cur ? "now" : ""} ${skippable ? "skip" : ""}" ${skippable ? `data-r="skip" data-v="${pos}"` : ""}>
+        <span>${pos === R.hero.pos ? `<b>You</b> <span class="muted">${pos}</span>` : pos}</span><span>${status}</span>
+        ${q.folded ? "<span></span>" : `<span class="seat-stack" data-r="stack" data-v="${pos}">${A(q.left)}</span>`}</div>`;
+    }).join("")}</div>
+    <p class="foot" style="margin:0">Tap a player further down to skip to them: everyone in between ${R.curBet > 0 ? "folds" : "checks"}. Tap a stack to change it.</p>
+  </div>`;
+}
+function recResult() {
+  const h = P(R.hero.pos), opp = live().filter(p => p !== h), o = R.result.outcome;
+  const fixed = h.folded || live().length === 1;
+  const net = o ? heroNet() : null;
+  const t = R.pick.target;
+  return `<div class="stack">
+    <div class="rec-street"><b>Result</b>${R.board.length ? `<span>${R.board.map(cardHtml).join("")}</span>` : ""}<span class="muted">Pot ${A(potTotal())}</span></div>
+    ${fixed ? `<div class="actor me"><b>${h.folded ? "You folded" : "Everyone folded · you won"}</b></div>`
+      : `<div class="act-grid" style="grid-template-columns:repeat(3,1fr)">${[["won", "Won"], ["lost", "Lost"], ["split", "Split"]].map(([v, l]) => `<button class="rbtn ${o === v ? "on" : ""}" data-r="out" data-v="${v}">${l}</button>`).join("")}</div>`}
+    ${o ? `<div class="preview"><div><div class="eyebrow">This hand</div><b class="num ${cls(net)}">${net === 0 ? "£0" : (net > 0 ? "+" : "−") + A(Math.abs(net))}</b></div><div style="text-align:right"><div class="eyebrow">Your stack now</div><b class="num">${A(h.stack + net)}</b></div></div>` : ""}
+    <div class="err">${esc(R.ui.err || "")}</div>
+    ${(h.folded ? live() : opp).length ? `<h3>Shown cards <span class="muted" style="font-weight:500">· optional</span></h3>
+      ${(h.folded ? live() : opp).map(p => `<div class="did" style="margin:0"><span><b>${p.pos}</b> ${p.shown.map(cardHtml).join("")}</span>
+        <button class="linkbtn" data-r="show" data-v="${p.pos}">${p.shown.length ? "Change" : "Add cards"}</button></div>
+        ${t === "show:" + p.pos ? picker(`${p.pos}'s cards`, p.shown, 2) : ""}`).join("")}` : ""}
+    <button class="rbtn ${R.result.flag ? "on" : ""}" data-r="flag">${R.result.flag ? "★ Marked for review" : "☆ Mark for review"}<small>for spots you're unsure about</small></button>
+    <label class="field"><span>Anything else? <span style="font-weight:400">optional</span></span><input class="input" data-note value="${esc(R.result.note || "")}" placeholder="Reads, what you were unsure about"></label>
+    <details class="guide"><summary>See the notes this creates</summary><pre>${esc(recText())}</pre></details>
+    <div class="act-grid"><button class="rbtn" data-r="save">Save hand</button><button class="rbtn pri" data-r="savenext">Save · next hand</button></div>
+  </div>`;
+}
+$("#rec").addEventListener("click", e => {
+  const t = e.target.closest("[data-r]"); if (!t || t.disabled) return;
+  const r = t.dataset.r, v = t.dataset.v;
+  R.ui ||= {};
+  switch (r) {
+    case "close": return closeRec();
+    case "undo": if (RH.length) { R = JSON.parse(RH.pop()); } break;
+    case "cfg": R.showCfg = !R.showCfg; break;
+    case "stakes": { const m = v.match(/[\d.]+/g); if (m && m.length >= 2) { R.cfg.sb = +m[0]; R.cfg.bb = +m[1]; } break; }
+    case "seats": R.cfg.seats = Math.min(10, Math.max(3, R.cfg.seats + +v)); break;
+    case "pos": RH = []; startHand(v); break;
+    case "repos": RH = []; R = { step: "setup", cfg: R.cfg, ui: {} }; break;
+    case "rank": R.pick.rank = R.pick.rank === v ? null : v; break;
+    case "suit": if (R.pick.rank) addCard(R.pick.rank + v); break;
+    case "unknown": { snap(); while (R.board.length < BOARD_LEN[R.street]) R.board.push("?"); R.pick.rank = null; boardDone(); break; }
+    case "f": case "x": case "c": R.ui = {}; act(r); break;
+    case "raise": R.ui = {}; act("r", +v); break;
+    case "ai": { R.ui = {}; const p = P(R.cur); act("r", p.bet + p.left); break; }
+    case "custom": R.ui = { custom: !R.ui.custom }; break;
+    case "customgo": {
+      const n = readNum($("#rec-amt")?.value), p = P(R.cur), max = p.bet + p.left, minTo = R.curBet === 0 ? +R.cfg.bb : R.curBet + R.lastRaise;
+      if (!isNum(n) || n <= 0) { R.ui.err = "Type the amount, e.g. 25."; break; }
+      if (n < minTo && n < max) { R.ui.err = `The minimum is ${A(minTo)}.`; break; }
+      R.ui = {}; act("r", n); break;
+    }
+    case "skip": R.ui = {}; skipTo(v); break;
+    case "stack": R.ui = { edit: v }; break;
+    case "stackgo": {
+      const n = readNum($("#rec-stack")?.value), q = P(R.ui.edit);
+      if (q && isNum(n) && n >= 0) { snap(); q.stack = n + q.inv; q.left = n; q.allin = !q.folded && n === 0; }
+      R.ui = {}; break;
+    }
+    case "out": R.result.outcome = v; R.ui = {}; break;
+    case "show": if (R.pick.target === "show:" + v) R.pick = { target: "", rank: null }; else { snap(); R.pick = { target: "show:" + v, rank: null }; P(v).shown = []; } break;
+    case "flag": R.result.flag = !R.result.flag; break;
+    case "save": return saveRec(false);
+    case "savenext": return saveRec(true);
+    case "discard": R.ui.discard = true; break;
+    case "discardno": R.ui.discard = false; break;
+    case "discardyes": RH = []; R = { step: "setup", cfg: R.cfg, ui: {} }; break;
+  }
+  renderRec();
+});
+$("#rec").addEventListener("input", e => {
+  const k = e.target.dataset.cfg;
+  if (k) { const n = readNum(e.target.value); if (isNum(n) && n >= 0) R.cfg[k] = n; return; }
+  if (e.target.hasAttribute("data-note")) { R.result.note = e.target.value; saveDraft(); }
+});
+$("#rec").addEventListener("change", e => { if (e.target.name === "rgame") { R.cfg.game = e.target.value; renderRec(); } });
+
 
 // ---------- boot ----------
 S.db = localDb;
