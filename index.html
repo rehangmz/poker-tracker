@@ -1147,7 +1147,7 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape" && !$("#sheet").hidden) closeSheet();
 });
 
-const APP_VERSION = "12";
+const APP_VERSION = "13";
 // ---------- on-device storage (encrypted with your password) ----------
 // Same small API the page used with Claude's database. Data is kept in memory while
 // unlocked and saved to localStorage encrypted with AES-GCM, keyed from the password.
@@ -1414,7 +1414,7 @@ let R = null, RH = [];   // recorder state and undo history
 
 function qcfg() { try { return { ...QH_DEFAULT, ...(JSON.parse(localStorage.getItem(QH_CFG)) || {}) }; } catch (e) { return { ...QH_DEFAULT }; } }
 function saveCfg(c) { try { localStorage.setItem(QH_CFG, JSON.stringify(c)); } catch (e) {} }
-function saveDraft() { try { if (R && R.step !== "setup") localStorage.setItem(QH_DRAFT, JSON.stringify(R)); else localStorage.removeItem(QH_DRAFT); } catch (e) {} }
+function saveDraft() { try { if (R && (R.step !== "setup" || R.prev)) localStorage.setItem(QH_DRAFT, JSON.stringify(R)); else localStorage.removeItem(QH_DRAFT); } catch (e) {} }
 function hasDraft() { try { return !!localStorage.getItem(QH_DRAFT); } catch (e) { return false; } }
 const isCash = () => R.cfg.game === "Cash";
 const N = n => { const v = Math.round(n * 100) / 100; return v % 1 ? v.toFixed(2) : String(v); };
@@ -1451,7 +1451,7 @@ function snap() { RH.push(JSON.stringify(R)); if (RH.length > 300) RH.shift(); }
 function startHand(heroPos) {
   const c = { ...R.cfg }; saveCfg(c);
   const players = POSITIONS[c.seats].map(pos => { const st = +(pos === heroPos ? c.stack : c.others) || 0; return { pos, stack: st, left: st, inv: 0, bet: 0, folded: false, allin: false, acted: false, shown: [] }; });
-  R = { v: 1, cfg: c, step: "cards", hero: { pos: heroPos, cards: [] }, board: [], street: "pre", players, log: [], pots: {},
+  R = { v: 1, cfg: c, step: "cards", hero: { pos: heroPos, cards: [] }, board: [], street: "pre", players, log: [], pots: {}, inputs: [],
     curBet: 0, lastRaise: +c.bb, cur: null, result: { outcome: "", flag: false, note: "" }, pick: { target: "hero", rank: null }, ui: {} };
   const post = (pos, amt, blind) => { const p = P(pos); if (!p || !amt) return; const a = Math.min(amt, p.left); p.left -= a; p.inv += a; if (blind) p.bet += a; if (!p.left) p.allin = true; };
   if (c.game === "Tournament" && +c.ante) post("BB", +c.ante, false);
@@ -1513,20 +1513,48 @@ function toResult() {
   const h = P(R.hero.pos);
   R.result.outcome = h.folded ? "folded" : live().length === 1 ? "won" : "";
 }
-function skipTo(target) {
-  snap(); let guard = 0;
+function skipTo(target, quiet) {
+  if (!quiet) snap(); let guard = 0;
   while (R.step === "act" && R.cur && R.cur !== target && guard++ < 20) act(R.curBet - P(R.cur).bet <= 0 ? "x" : "f", 0, true);
 }
 // cards
 function pickTarget() { const t = R.pick.target; return t === "hero" ? R.hero.cards : t === "board" ? R.board : t.startsWith("show:") ? P(t.slice(5)).shown : null; }
 function usedCards() { return new Set([...R.hero.cards, ...R.board, ...R.players.flatMap(p => p.shown)].filter(c => c && c !== "?")); }
-function addCard(card) {
-  snap(); const arr = pickTarget(); if (!arr) return;
+function addCard(card, quiet) {
+  if (!quiet) snap(); const arr = pickTarget(); if (!arr) return;
   arr.push(card); R.pick.rank = null;
   const t = R.pick.target;
   if (t === "hero" && arr.length === 2) R.step = "act";
   else if (t === "board" && arr.length === BOARD_LEN[R.street]) boardDone();
   else if (t.startsWith("show:") && arr.length === 2) R.pick = { target: "", rank: null };
+}
+function fillUnknown(quiet) { if (!quiet) snap(); while (R.board.length < BOARD_LEN[R.street]) R.board.push("?"); R.pick.rank = null; boardDone(); }
+function setStack(pos, n, quiet) { const q = P(pos); if (!q) return; if (!quiet) snap(); q.stack = n + q.inv; q.left = n; q.allin = !q.folded && n === 0; }
+function openShow(pos, quiet) { if (!quiet) snap(); R.pick = { target: "show:" + pos, rank: null }; P(pos).shown = []; }
+const recInput = i => (R.inputs ||= []).push(i);
+// Re-apply what was entered on top of new starting details.
+function applyInput(i) {
+  switch (i.k) {
+    case "card": if (!pickTarget() || usedCards().has(i.c)) return false; addCard(i.c, true); return true;
+    case "unknown": if (R.step !== "board") return false; fillUnknown(true); return true;
+    case "act": if (R.step !== "act") return false; act(i.type, i.to, true); return true;
+    case "skip": if (R.step !== "act" || !upcoming().includes(i.pos)) return false; skipTo(i.pos, true); return true;
+    case "stack": if (!P(i.pos)) return false; setStack(i.pos, i.n, true); return true;
+    case "show": if (R.step !== "result" || !P(i.pos)) return false; openShow(i.pos, true); return true;
+  }
+  return false;
+}
+function rebuild(prev, cfg) {
+  R = { step: "setup", cfg, ui: {} }; startHand(prev.hero.pos);
+  // a different table size or straddle changes who acts when, so only your cards carry over then
+  const same = prev.cfg.seats === cfg.seats && !!strPos(prev.cfg) === !!strPos(cfg);
+  let missed = 0;
+  for (const i of prev.inputs || []) {
+    if (!same && !(i.k === "card" && R.step === "cards")) continue;
+    if (applyInput(i)) R.inputs.push(i); else missed++;
+  }
+  if (R.step === "result") R.result = { ...prev.result, outcome: R.result.outcome || prev.result.outcome };
+  return { same, missed };
 }
 // money
 function heroNet() {
@@ -1603,7 +1631,7 @@ function renderRec() {
     ? `<div class="confirm" style="margin-top:18px"><b>Discard this hand?</b><div class="btnrow" style="margin-top:10px"><button class="btn" data-r="discardno">Keep it</button><button class="btn danger solid" data-r="discardyes">Discard</button></div></div>`
     : `<button class="linkbtn rec-discard" data-r="discard">Discard this hand</button>`;
   $("#rec").innerHTML = `<div class="rec-head"><button class="x" data-r="close" aria-label="Close">×</button><div class="rec-title">${title}</div>
-    <button class="btn small" data-r="undo" ${RH.length ? "" : "disabled"}>Undo</button></div><div class="rec-body">${body}${discard}</div>`;
+    ${s !== "setup" ? `<button class="btn small" data-r="tostart">Details</button>` : ""}<button class="btn small" data-r="undo" ${RH.length ? "" : "disabled"}>Undo</button></div><div class="rec-body">${body}${discard}</div>`;
 }
 function recSetup() {
   const c = R.cfg;
@@ -1614,7 +1642,9 @@ function recSetup() {
     ${R.showCfg ? recCfgForm() : ""}
     ${sp ? `<button class="rbtn ${c.straddleOn ? "on" : ""}" data-r="strtoggle">${c.straddleOn ? "✓ Straddle on" : "Straddle off"}<small>${sp} straddles ${A(strAmt(c))} · tap to turn ${c.straddleOn ? "off" : "on"}</small></button>` : ""}
     <h3>Your position</h3>
-    <div class="pos-grid">${POSITIONS[c.seats].map(p => `<button class="rbtn" data-r="pos" data-v="${p}">${p}</button>`).join("")}</div>
+    <div class="pos-grid">${POSITIONS[c.seats].map(p => `<button class="rbtn ${R.prev?.hero.pos === p ? "pri" : ""}" data-r="pos" data-v="${p}">${p}</button>`).join("")}</div>
+    ${R.prev ? `<div class="notice">You're editing the start of this hand. Change anything above, then tap <b>${R.prev.hero.pos}</b> to carry on with your cards and actions kept, or pick a different position to start the hand again.
+      <div class="btnrow" style="margin-top:10px"><button class="btn" data-r="backtohand">Back to the hand, no changes</button></div></div>` : ""}
     <p class="foot" style="margin:0">Tap your position to start. These settings are remembered, and your stack updates after each hand you save.</p></div>`;
 }
 function recCfgForm() {
@@ -1726,30 +1756,40 @@ $("#rec").addEventListener("click", e => {
     case "strtoggle": R.cfg.straddleOn = !R.cfg.straddleOn; saveCfg(R.cfg); break;
     case "stakes": { const m = v.match(/[\d.]+/g); if (m && m.length >= 2) { R.cfg.sb = +m[0]; R.cfg.bb = +m[1]; } break; }
     case "seats": R.cfg.seats = Math.min(10, Math.max(3, R.cfg.seats + +v)); break;
-    case "pos": RH = []; startHand(v); break;
-    case "repos": RH = []; R = { step: "setup", cfg: R.cfg, ui: {} }; break;
+    case "pos": {
+      snap();
+      const prev = R.prev;
+      if (prev && v === prev.hero.pos) {
+        const r2 = rebuild(prev, R.cfg);
+        toast(r2.same && !r2.missed ? "Updated. Your cards and actions are kept." : r2.same ? `Updated. ${r2.missed} step${r2.missed === 1 ? "" : "s"} no longer fitted, so check the hand.` : "Updated. Your cards are kept. Enter the actions again.");
+      } else startHand(v);
+      break;
+    }
+    case "repos": snap(); R = { step: "setup", cfg: R.cfg, ui: {} }; break;
+    case "tostart": { snap(); const prev = R; R = { v: 1, step: "setup", cfg: { ...prev.cfg }, showCfg: true, ui: {}, prev }; break; }
+    case "backtohand": R = R.prev; break;
     case "rank": R.pick.rank = R.pick.rank === v ? null : v; break;
-    case "suit": if (R.pick.rank) addCard(R.pick.rank + v); break;
-    case "unknown": { snap(); while (R.board.length < BOARD_LEN[R.street]) R.board.push("?"); R.pick.rank = null; boardDone(); break; }
-    case "f": case "x": case "c": R.ui = {}; act(r); break;
-    case "raise": R.ui = {}; act("r", +v); break;
-    case "ai": { R.ui = {}; const p = P(R.cur); act("r", p.bet + p.left); break; }
+    case "suit": if (R.pick.rank) { const c = R.pick.rank + v; addCard(c); recInput({ k: "card", c }); } break;
+    case "unknown": fillUnknown(); recInput({ k: "unknown" }); break;
+    case "f": case "x": case "c": R.ui = {}; act(r); recInput({ k: "act", type: r }); break;
+    case "raise": R.ui = {}; act("r", +v); recInput({ k: "act", type: "r", to: +v }); break;
+    case "ai": { R.ui = {}; const p = P(R.cur), to = p.bet + p.left; act("r", to); recInput({ k: "act", type: "r", to: 1e12 }); break; }
     case "custom": R.ui = { custom: !R.ui.custom }; break;
     case "customgo": {
       const n = readNum($("#rec-amt")?.value), p = P(R.cur), max = p.bet + p.left, minTo = R.curBet === 0 ? +R.cfg.bb : R.curBet + R.lastRaise;
       if (!isNum(n) || n <= 0) { R.ui.err = "Type the amount, e.g. 25."; break; }
       if (n < minTo && n < max) { R.ui.err = `The minimum is ${A(minTo)}.`; break; }
-      R.ui = {}; act("r", n); break;
+      R.ui = {}; act("r", n); recInput({ k: "act", type: "r", to: n }); break;
     }
-    case "skip": R.ui = {}; skipTo(v); break;
+    case "skip": R.ui = {}; skipTo(v); recInput({ k: "skip", pos: v }); break;
     case "stack": R.ui = { edit: v }; break;
     case "stackgo": {
       const n = readNum($("#rec-stack")?.value), q = P(R.ui.edit);
-      if (q && isNum(n) && n >= 0) { snap(); q.stack = n + q.inv; q.left = n; q.allin = !q.folded && n === 0; }
+      if (q && isNum(n) && n >= 0) { setStack(q.pos, n); recInput({ k: "stack", pos: q.pos, n }); }
       R.ui = {}; break;
     }
     case "out": R.result.outcome = v; R.ui = {}; break;
-    case "show": if (R.pick.target === "show:" + v) R.pick = { target: "", rank: null }; else { snap(); R.pick = { target: "show:" + v, rank: null }; P(v).shown = []; } break;
+    case "show": if (R.pick.target === "show:" + v) R.pick = { target: "", rank: null }; else { openShow(v); recInput({ k: "show", pos: v }); } break;
     case "flag": R.result.flag = !R.result.flag; break;
     case "save": return saveRec(false);
     case "savenext": return saveRec(true);
