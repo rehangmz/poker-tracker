@@ -1147,7 +1147,7 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape" && !$("#sheet").hidden) closeSheet();
 });
 
-const APP_VERSION = "11";
+const APP_VERSION = "12";
 // ---------- on-device storage (encrypted with your password) ----------
 // Same small API the page used with Claude's database. Data is kept in memory while
 // unlocked and saved to localStorage encrypted with AES-GCM, keyed from the password.
@@ -1403,9 +1403,12 @@ const POSITIONS = {
 const STREETS = ["pre", "flop", "turn", "river"], STREET_NAME = { pre: "Preflop", flop: "Flop", turn: "Turn", river: "River" };
 const BOARD_LEN = { flop: 3, turn: 4, river: 5 };
 const RANKS = "AKQJT98765432".split(""), SUITS = ["s", "h", "d", "c"];
-const QH_DEFAULT = { game: "Cash", sb: 1, bb: 2, ante: 0, seats: 9, stack: 200, others: 200, straddleOn: false, straddle: 0 };
-// The straddle is posted by the first seat to act preflop (UTG at a full table), 2 big blinds unless set otherwise.
-const strAmt = c => +c.straddle || 2 * +c.bb;
+const QH_DEFAULT = { game: "Cash", sb: 1, bb: 2, ante: 0, seats: 9, stack: 200, others: 200, straddleOn: false, straddles: {} };
+// The straddle is posted by the first seat to act preflop (UTG at a full table).
+// Amounts are remembered per stakes; your usual games are built in, anything else defaults to 2 big blinds.
+const STRADDLE_DEFAULTS = { "1/2": 5, "1/1": 2 };
+const stakeKey = c => `${N(+c.sb)}/${N(+c.bb)}`;
+const strAmt = c => +(c.straddles || {})[stakeKey(c)] || STRADDLE_DEFAULTS[stakeKey(c)] || 2 * +c.bb;
 const strPos = c => c.straddleOn && c.seats >= 4 ? POSITIONS[c.seats][0] : null;
 let R = null, RH = [];   // recorder state and undo history
 
@@ -1622,7 +1625,7 @@ function recCfgForm() {
     <div class="grid2"><label class="field"><span>Small blind</span><input class="input num" inputmode="decimal" data-cfg="sb" value="${c.sb}"></label>
       <label class="field"><span>Big blind</span><input class="input num" inputmode="decimal" data-cfg="bb" value="${c.bb}"></label></div>
     ${c.game === "Tournament" ? `<label class="field"><span>BB ante <span style="font-weight:400">(0 if none)</span></span><input class="input num" inputmode="decimal" data-cfg="ante" value="${c.ante || 0}"></label>` : ""}
-    <label class="field"><span>Straddle amount <span style="font-weight:400">(used when the straddle is on)</span></span><input class="input num" inputmode="decimal" data-cfg="straddle" value="${+c.straddle || ""}" placeholder="${N(2 * +c.bb)} (2 big blinds)"></label>
+    <label class="field"><span>Straddle at ${esc(stakeKey(c))} <span style="font-weight:400">(saved for these stakes)</span></span><input class="input num" inputmode="decimal" data-cfg="straddle" value="${N(strAmt(c))}"></label>
     <div class="field"><span>Players at the table</span><div class="stepper"><button type="button" class="rbtn" data-r="seats" data-v="-1">−</button><b>${c.seats}</b><button type="button" class="rbtn" data-r="seats" data-v="1">+</button></div></div>
     <div class="grid2"><label class="field"><span>Your stack</span><input class="input num" inputmode="decimal" data-cfg="stack" value="${c.stack}"></label>
       <label class="field"><span>Others' stacks</span><input class="input num" inputmode="decimal" data-cfg="others" value="${c.others}"></label></div>
@@ -1758,7 +1761,11 @@ $("#rec").addEventListener("click", e => {
 });
 $("#rec").addEventListener("input", e => {
   const k = e.target.dataset.cfg;
-  if (k) { const n = readNum(e.target.value); if (isNum(n) && n >= 0) R.cfg[k] = n; return; }
+  if (k) {
+    const n = readNum(e.target.value);
+    if (k === "straddle") { if (isNum(n) && n > 0) R.cfg.straddles = { ...(R.cfg.straddles || {}), [stakeKey(R.cfg)]: n }; saveCfg(R.cfg); return; }
+    if (isNum(n) && n >= 0) R.cfg[k] = n; return;
+  }
   if (e.target.hasAttribute("data-note")) { R.result.note = e.target.value; saveDraft(); }
 });
 $("#rec").addEventListener("change", e => { if (e.target.name === "rgame") { R.cfg.game = e.target.value; renderRec(); } });
