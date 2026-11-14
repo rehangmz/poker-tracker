@@ -55,6 +55,21 @@ button,a,label{-webkit-tap-highlight-color:transparent}
 .lock-box img{width:76px;height:76px;border-radius:18px;margin:0 auto;box-shadow:var(--shadow)}
 .lock-box h1{font-size:24px}
 .lock-box .input{text-align:center;font-size:18px;letter-spacing:.08em}
+.mode-hands .nav{display:none}
+.mode-hands .app{padding-bottom:calc(30px + env(safe-area-inset-bottom,0px))}
+body:not(.mode-hands) .hands-only{display:none!important}
+.mode-hands .stats-only{display:none!important}
+.topbar-actions{display:flex;gap:8px;align-items:center}
+.btn.small{min-height:38px;padding:7px 12px;font-size:14px}
+.btn.small svg{width:16px;height:16px}
+.entry{display:flex;align-items:center;gap:14px;text-align:left;width:100%;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;min-height:72px}
+.entry b{font-family:var(--f-display);font-size:18px;display:block}
+.entry span{color:var(--muted);font-size:13.5px}
+.entry .go{margin-left:auto;color:var(--accent);font-size:24px;line-height:1}
+.entry-ico{width:44px;height:44px;border-radius:12px;background:var(--accent-soft);color:var(--accent);display:flex;align-items:center;justify-content:center;flex:none}
+.entry-ico svg{width:24px;height:24px}
+.or{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;margin-top:6px}
+.or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
 .sr-file{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
 .iconbtn{background:var(--surface);border:1px solid var(--line);border-radius:11px;width:38px;height:38px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted)}
 .iconbtn svg{width:20px;height:20px}
@@ -242,7 +257,10 @@ details.guide pre{font-family:var(--f-mono);font-size:12.5px;white-space:pre-wra
 <div class="app">
   <div class="topbar">
     <div class="brand"><span class="pips"><span class="c-s">♠</span><span class="c-h">♥</span><span class="c-d">♦</span><span class="c-c">♣</span></span>Poker Session Tracker</div>
-    <button class="iconbtn" data-action="settings" aria-label="Backup and restore"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="7.5" ry="3"/><path d="M4.5 6v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3V6"/><path d="M4.5 12v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-6"/></svg></button>
+    <div class="topbar-actions">
+    <button class="btn small hands-only" data-action="go-stats"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>My stats</button>
+    <button class="iconbtn stats-only" data-action="settings" aria-label="Backup and restore"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="7.5" ry="3"/><path d="M4.5 6v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3V6"/><path d="M4.5 12v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-6"/></svg></button>
+    </div>
   </div>
   <main id="view"></main>
 </div>
@@ -272,7 +290,8 @@ const S = {
   tab: "home", filter: "all", seg: "overall", handId: null,
   db: null, loading: true, noDb: false, readOnly: false, streaming: null,
 };
-try { const t = localStorage.getItem("pst.tab"); if (t) S.tab = t; } catch (e) {}
+try { const t = localStorage.getItem("pst.tab"); if (t && t !== "hands") S.tab = t; } catch (e) {}
+S.lastStatsTab = S.tab;
 
 // ---------- helpers ----------
 const $ = (s, r = document) => r.querySelector(s);
@@ -510,7 +529,7 @@ function viewHome() {
   </div>`;
 }
 function dataNudge() {
-  if (!S.sessions.length && !S.hands.length) return `<section class="card live"><div class="card-head"><h3>Bring your sessions over</h3></div>
+  if (!S.sessions.length) return `<section class="card live"><div class="card-head"><h3>Bring your sessions over</h3></div>
     <p class="muted" style="margin:0">Restore your backup file to load your history. It's in iCloud Drive as <b>Poker Tracker backup.json</b>.</p>
     <div class="btnrow"><button class="btn primary" data-action="settings">Restore from backup</button></div></section>`;
   const lb = STORE.lastBackup || 0;
@@ -665,6 +684,7 @@ function viewHands() {
   const list = [...S.hands].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   return `<div class="stack">
     <div class="card-head" style="margin:0"><h2>Hand review</h2><button class="btn primary" data-action="new-hand" ${S.readOnly ? "disabled" : ""}>New hand</button></div>
+    ${!HSTORE.migrated && !STORE && readVault() ? `<div class="notice">Hands you saved before this update are still inside your password-protected stats. Tap <b>My stats</b> and unlock once, and they'll move here for good.</div>` : ""}
     ${list.length ? list.map(h => `<button class="hand-row" data-action="open-hand" data-id="${esc(h.id)}">
         <div class="meta"><span>${fmtDate(new Date(h.createdAt).toISOString().slice(0, 10), true)} · ${esc(h.game || "")}${h.stakes ? " " + esc(h.stakes) : ""}</span>
         <span class="verdict ${vClass(h.verdict)}">${h.status === "analysing" ? "Reviewing…" : esc(h.verdict || "Needs review")}</span></div>
@@ -722,7 +742,8 @@ function viewHand() {
 let raf = 0;
 function render() { cancelAnimationFrame(raf); raf = requestAnimationFrame(paint); }
 function paint() {
-  if (S.locked) return;
+  document.body.classList.toggle("mode-hands", S.tab === "hands");
+  if (!STORE && S.tab !== "hands") return;
   const view = $("#view");
   // keep anything typed into inputs in the main view across re-renders
   const keep = {}; let focusId = null;
@@ -743,8 +764,7 @@ setInterval(() => { const el = $("#live-elapsed"); if (el && S.live?.startedAt) 
 function openSheet(html) { $("#sheet-panel").innerHTML = `<div class="grabber"></div>` + html; $("#sheet").hidden = false; document.body.style.overflow = "hidden"; const f = $("#sheet-panel [autofocus]"); if (f && matchMedia("(pointer:fine)").matches) f.focus(); }
 function closeSheet() { $("#sheet").hidden = true; $("#sheet-panel").innerHTML = ""; document.body.style.overflow = ""; }
 const segRadio = (name, opts, val, labels = {}) => `<div class="seg">${opts.map(o => `<label><input type="radio" name="${name}" value="${o}" ${o === val ? "checked" : ""}><span>${labels[o] || o}</span></label>`).join("")}</div>`;
-function blindChips(target) {
-  const b = blindsList();
+function blindChips(target, b = blindsList()) {
   return b.length ? `<div class="chips" style="margin-top:6px">${b.map(x => `<button type="button" class="chip" data-fill="${target}" data-val="${esc(x)}">${esc(x)}</button>`).join("")}</div>` : "";
 }
 
@@ -810,13 +830,13 @@ function updatePreview(form) {
 }
 
 function handForm(h) {
-  const last = [...S.sessions].sort((a, b) => (b.date || "").localeCompare(a.date || ""))[0];
-  const game = h ? h.game || "Cash" : last?.game || "Cash", stakes = h ? h.stakes || "" : (last?.game === "Cash" ? last.blinds : "");
+  const last = [...S.hands].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0];
+  const game = h ? h.game || "Cash" : last?.game || "Cash", stakes = h ? h.stakes || "" : (last?.stakes || "");
   return `<div class="sheet-head"><h2>${h ? "Edit hand" : "New hand"}</h2><button class="x" data-action="close-sheet" aria-label="Close">×</button></div>
   <form class="stack" data-form="hand" data-id="${esc(h?.id || "")}" novalidate>
     <div class="grid2"><div class="field"><span>Game</span>${segRadio("game", ["Cash", "Tournament"], game)}</div>
       <label class="field"><span>Stakes / level</span><input class="input" id="h-stakes" name="stakes" value="${esc(stakes)}" placeholder="£1/2"></label></div>
-    ${blindChips("h-stakes")}
+    ${blindChips("h-stakes", HSTORE.stakes || [])}
     <label class="field"><span>The hand, as written in your notes</span>
       <textarea class="input mono" name="text" rows="9" autofocus placeholder="£1/2, 250 eff. Hero BTN AsQd&#10;UTG limp, CO limp, H r 12, BB c, UTG c, CO f&#10;F (38) Qh7c2s: BB x, UTG x, H b 25, BB c, UTG f&#10;T (88) 5d: BB x, H b 60, BB jam 210. ?">${esc(h?.text || "")}</textarea></label>
     <label class="field"><span>What I did at the end <span class="muted" style="font-weight:400">optional</span></span>
@@ -892,9 +912,8 @@ function parseAnalysis(text) {
   return { verdict: v ? v[0].toUpperCase() + v.slice(1) : verdict, summary, bestPlay, body };
 }
 function playerProfile() {
-  const cashB = blindsList();
-  const st = stats(S.sessions);
-  return `About the player: a live player in the UK. ${cashB.length ? `Cash stakes they play: ${cashB.join(", ")}.` : ""} ${venuesFor("Casino").length ? `Casino card rooms they play: ${venuesFor("Casino").join(", ")}.` : ""} ${venuesFor("Private").length ? `They also play private games with strangers.` : ""} They also play home games with friends. They also play small live tournaments (£20 to £90 buy-ins). ${st.n ? `They have logged ${st.n} sessions.` : ""} Assume typical live low-stakes player pools (lots of limping, calling too wide preflop, under-bluffed rivers, big raises meaning strength) unless the notes say otherwise.`;
+  const st = HSTORE.stakes || [];
+  return `About the player: a live player in the UK who plays low-stakes cash games${st.length ? ` (${st.join(", ")})` : ""} in casinos, in private games with strangers and in home games with friends, plus small live tournaments (£20 to £90 buy-ins). Assume typical live low-stakes player pools (lots of limping, calling too wide preflop, under-bluffed rivers, big raises meaning strength) unless the notes say otherwise.`;
 }
 function analysisPrompt(h) {
   return `You are an experienced live No-Limit Hold'em coach reviewing one hand for a player. ${playerProfile()}
@@ -959,7 +978,7 @@ async function submitHand(form) {
 }
 
 // ---------- events ----------
-function setTab(t) { S.tab = t; if (t !== "hands") S.handId = null; try { localStorage.setItem("pst.tab", t); } catch (e) {} render(); scrollTo(0, 0); }
+function setTab(t) { S.tab = t; if (t !== "hands") { S.handId = null; S.lastStatsTab = t; try { localStorage.setItem("pst.tab", t); } catch (e) {} } render(); scrollTo(0, 0); }
 document.addEventListener("click", async e => {
   const t = e.target.closest("[data-tab],[data-action],[data-filter],[data-seg],[data-fill],[data-day]");
   if (!t) return;
@@ -991,6 +1010,7 @@ document.addEventListener("click", async e => {
   if (a === "close-hand") { S.handId = null; render(); return; }
   if (a === "copy-prompt") { copyPrompt(t); return; }
   if (a === "settings") { openSheet(settingsSheet()); return; }
+  if (a === "go-stats") { goStats(); return; }
   if (a === "manage-venues") { openSheet(venuesSheet()); return; }
   if (a === "fill-venues") { openSheet(fillSheet()); updateFill($("#sheet-panel form")); return; }
   if (a === "undo-fill") { undoFill(); return; }
@@ -1071,7 +1091,7 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape" && !$("#sheet").hidden) closeSheet();
 });
 
-const APP_VERSION = "8";
+const APP_VERSION = "9";
 // ---------- on-device storage (encrypted with your password) ----------
 // Same small API the page used with Claude's database. Data is kept in memory while
 // unlocked and saved to localStorage encrypted with AES-GCM, keyed from the password.
@@ -1096,8 +1116,24 @@ async function openVault(pw) {
   const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(v.iv) }, key, unb64(v.ct)); // throws on a wrong password
   return { key, salt, data: JSON.parse(new TextDecoder().decode(pt)) };
 }
+// Hands are kept apart from your stats and don't need the password.
+const HANDS_KEY = "pst.hands.v1";
+let HSTORE = { hands: {}, stakes: [] };
+try { HSTORE = { ...HSTORE, ...(JSON.parse(localStorage.getItem(HANDS_KEY)) || {}) }; } catch (e) {}
+function saveHands() {
+  try { localStorage.setItem(HANDS_KEY, JSON.stringify(HSTORE)); } catch (e) { toast("Couldn't save on this phone. Make a backup now."); }
+  sync();
+}
+// Older versions kept hands inside the encrypted stats; move them out once.
+function moveHandsOut() {
+  const old = STORE?.hands; if (!old) return 0;
+  let n = 0;
+  for (const [id, h] of Object.entries(old)) if (!(id in HSTORE.hands)) { HSTORE.hands[id] = h; n++; }
+  delete STORE.hands; HSTORE.migrated = true; saveHands();
+  return n;
+}
 function normalise() {
-  STORE.sessions ||= {}; STORE.hands ||= {}; STORE.live ??= null; STORE.venues ||= {};
+  STORE.sessions ||= {}; STORE.live ??= null; STORE.venues ||= {};
   STORE.venues.Casino ||= []; STORE.venues.Private ||= []; STORE.venues.Home ||= [];
   // One earlier version stored Casino/Private as the venue itself; fold those back under Public/Home.
   for (const x of [...Object.values(STORE.sessions), STORE.live]) {
@@ -1113,14 +1149,29 @@ function persist(dirty = true) {
   saving = saving.then(seal).catch(() => toast("Couldn't save on this phone. Make a backup now."));
 }
 function sync() {
-  S.sessions = Object.entries(STORE.sessions).map(([id, d]) => ({ id, ...d }));
-  S.hands = Object.entries(STORE.hands).map(([id, d]) => ({ id, ...d }));
-  S.live = STORE.live ? { ...STORE.live } : null;
+  S.hands = Object.entries(HSTORE.hands).map(([id, d]) => ({ id, ...d }));
+  S.sessions = STORE ? Object.entries(STORE.sessions).map(([id, d]) => ({ id, ...d })) : [];
+  S.live = STORE?.live ? { ...STORE.live } : null;
+  if (STORE) {   // remember just the blind levels, so the hand form can offer them while stats are locked
+    const b = blindsList();
+    if (JSON.stringify(b) !== JSON.stringify(HSTORE.stakes)) { HSTORE.stakes = b; try { localStorage.setItem(HANDS_KEY, JSON.stringify(HSTORE)); } catch (e) {} }
+  }
   S.loading = false; render();
 }
+const handsDb = {
+  doc(id) {
+    return {
+      async set(d) { HSTORE.hands[id] = { ...d }; saveHands(); },
+      async update(d) { const cur = HSTORE.hands[id]; if (!cur) throw { code: "not_found" }; Object.assign(cur, d); saveHands(); },
+      async delete() { delete HSTORE.hands[id]; saveHands(); },
+    };
+  },
+  async add(d) { const id = newId(); HSTORE.hands[id] = { ...d }; saveHands(); return { id }; },
+};
 const localDb = {
   doc(path) {
     const [c, id] = path.split("/");
+    if (c === "hands") return handsDb.doc(id);
     return {
       async set(d) { if (c === "live") STORE.live = { ...d }; else STORE[c][id] = { ...d }; persist(); },
       async update(d) {
@@ -1131,36 +1182,50 @@ const localDb = {
       async delete() { if (c === "live") STORE.live = null; else delete STORE[c][id]; persist(); },
     };
   },
-  collection(c) { return { async add(d) { const id = newId(); STORE[c][id] = { ...d }; persist(); return { id }; } }; },
+  collection(c) { return c === "hands" ? { add: handsDb.add } : { async add(d) { const id = newId(); STORE[c][id] = { ...d }; persist(); return { id }; } }; },
 };
 
 // ---------- lock screen ----------
 function showLock(mode, msg = "") {
   const el = $("#lock"); el.hidden = false;
-  const head = `<img src="icons/icon-180.png" alt=""><h1>Poker Tracker</h1>`;
+  const head = `<img src="icons/icon-180.png" alt=""><h1>Poker Tracker</h1>
+      <button type="button" class="entry" data-action="open-hands"><span class="entry-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><rect x="3.5" y="5" width="10" height="15" rx="2" transform="rotate(-10 8.5 12.5)"/><rect x="10" y="4" width="10" height="15" rx="2" transform="rotate(8 15 11.5)"/></svg></span>
+        <span><b>Hands</b><span>Save and review hands. No password needed.</span></span><span class="go">›</span></button>
+      <div class="or">My stats</div>`;
   if (mode === "setup") el.innerHTML = `<form class="lock-box" data-lock="setup">${head}
-      <p class="muted" style="margin:0">Choose a password. You'll enter it each time you open the app, and your sessions and hands are encrypted with it on this phone.</p>
+      <p class="muted" style="margin:0">Choose a password for your sessions and stats. They're encrypted with it on this phone. Hands don't need it.</p>
       <input class="input" type="password" id="pw1" autocomplete="new-password" placeholder="New password" autofocus>
       <input class="input" type="password" id="pw2" autocomplete="new-password" placeholder="Type it again">
       <div class="err">${esc(msg)}</div><button class="btn primary block">Set password</button>
       <p class="foot">If you forget it there's no way to recover it, so keep backups. A backup file restores everything.</p></form>`;
   else if (mode === "reset") el.innerHTML = `<div class="lock-box">${head}
-      <div class="confirm" style="text-align:left"><b>Forgot your password?</b><p class="muted" style="margin:6px 0 0">Your data can't be unlocked without it. You can erase this app's data, set a new password, then restore from your latest backup file.</p></div>
+      <div class="confirm" style="text-align:left"><b>Forgot your password?</b><p class="muted" style="margin:6px 0 0">Your sessions can't be unlocked without it. You can erase them, set a new password, then restore from your latest backup file. Your hands aren't affected.</p></div>
       <button class="btn danger solid block" data-action="erase-vault">Erase and start again</button><button class="btn block" data-action="back-to-lock">Go back</button></div>`;
   else el.innerHTML = `<form class="lock-box" data-lock="unlock">${head}
-      <input class="input" type="password" id="pw" autocomplete="current-password" placeholder="Password" autofocus>
-      <div class="err">${esc(msg)}</div><button class="btn primary block">Unlock</button>
+      <input class="input" type="password" id="pw" autocomplete="current-password" placeholder="Password">
+      <div class="err">${esc(msg)}</div><button class="btn primary block">Unlock my stats</button>
       <button type="button" class="linkbtn" data-action="forgot-pw">Forgot password?</button></form>`;
   const f = el.querySelector("[autofocus]"); if (f && matchMedia("(pointer:fine)").matches) f.focus();
 }
 function unlocked() {
-  normalise(); $("#lock").hidden = true; $("#lock").innerHTML = ""; S.locked = false; sync();
+  normalise();
+  const had = !!STORE.hands, moved = moveHandsOut();
+  if (!HSTORE.migrated) { HSTORE.migrated = true; try { localStorage.setItem(HANDS_KEY, JSON.stringify(HSTORE)); } catch (e) {} }
+  $("#lock").hidden = true; $("#lock").innerHTML = "";
+  S.tab = S.lastStatsTab || "home"; S.handId = null;
+  if (had) persist(false); else sync();   // re-save stats without the hands
+  if (moved) toast(`Moved ${moved} hand${moved === 1 ? "" : "s"} to the Hands section`);
 }
+// Locks your stats. Hands stay open.
 function lock() {
-  if (!readVault()) return;
-  closeSheet(); STORE = null; CK = null; S.locked = true;
-  S.sessions = []; S.hands = []; S.live = null; S.handId = null;
-  $("#view").innerHTML = ""; showLock("unlock");
+  if (!STORE) return;
+  STORE = null; CK = null; S.sessions = []; S.live = null;
+  if (S.tab === "hands") { sync(); return; }
+  closeSheet(); $("#view").innerHTML = ""; showLock(readVault() ? "unlock" : "setup");
+}
+function goStats() {
+  if (STORE) return setTab(S.lastStatsTab || "home");
+  showLock(readVault() ? "unlock" : "setup");
 }
 async function setupPassword(f) {
   const a = $("#pw1").value, b = $("#pw2").value;
@@ -1169,7 +1234,7 @@ async function setupPassword(f) {
   f.querySelector("button").disabled = true;
   let old = {}; try { old = JSON.parse(localStorage.getItem(OLD_KEY)) || {}; } catch (e) {}
   SALT = crypto.getRandomValues(new Uint8Array(16)); CK = await deriveKey(a, SALT); STORE = old;
-  normalise(); await seal();
+  normalise(); moveHandsOut(); await seal();
   localStorage.removeItem(OLD_KEY);   // the unencrypted copy from before passwords
   unlocked(); toast("Password set");
 }
@@ -1205,13 +1270,14 @@ document.addEventListener("submit", e => {
 document.addEventListener("click", e => {
   const a = e.target.closest("#lock [data-action]")?.dataset.action; if (!a) return;
   e.stopImmediatePropagation();
+  if (a === "open-hands") { $("#lock").hidden = true; $("#lock").innerHTML = ""; S.handId = null; setTab("hands"); return; }
   if (a === "forgot-pw") showLock("reset");
   if (a === "back-to-lock") showLock("unlock");
   if (a === "erase-vault") { localStorage.removeItem(VAULT_KEY); localStorage.removeItem(OLD_KEY); showLock("setup"); }
 }, true);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) hiddenAt = Date.now();
-  else if (hiddenAt && Date.now() - hiddenAt > LOCK_AFTER_MS && !S.locked) lock();
+  else if (hiddenAt && Date.now() - hiddenAt > LOCK_AFTER_MS && STORE) lock();
 });
 
 // ---------- backup & restore ----------
@@ -1231,7 +1297,7 @@ function settingsSheet() {
   </div>`;
 }
 async function backup() {
-  const data = { app: "poker-tracker", version: 2, exportedAt: new Date().toISOString(), sessions: STORE.sessions, hands: STORE.hands, live: STORE.live, venues: STORE.venues };
+  const data = { app: "poker-tracker", version: 2, exportedAt: new Date().toISOString(), sessions: STORE.sessions, hands: HSTORE.hands, live: STORE.live, venues: STORE.venues };
   const name = `Poker Tracker backup ${todayISO()}.json`;
   const blob = new Blob([JSON.stringify(data, null, 1)], { type: "application/json" });
   try {
@@ -1249,7 +1315,7 @@ async function restore(file) {
     const sm = toMap(j.sessions), hm = toMap(j.hands);
     const ns = Object.keys(sm).length, nh = Object.keys(hm).length;
     if (!ns && !nh) throw new Error("empty");
-    Object.assign(STORE.sessions, sm); Object.assign(STORE.hands, hm);
+    Object.assign(STORE.sessions, sm); Object.assign(HSTORE.hands, hm); if (nh) saveHands();
     if (j.live && !STORE.live) STORE.live = j.live;
     if (j.venues) for (const t of ["Casino", "Private", "Home"]) for (const n of j.venues[t] || []) rememberVenue(t, n);
     normalise(); persist(false);
@@ -1271,7 +1337,7 @@ function copyPrompt(link) {
 
 // ---------- boot ----------
 S.db = localDb;
-S.locked = true;
+sync();
 showLock(readVault() ? "unlock" : "setup");
 try { navigator.storage?.persist?.(); } catch (e) {}
 if ("serviceWorker" in navigator) addEventListener("load", () => {
