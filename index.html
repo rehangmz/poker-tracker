@@ -776,7 +776,7 @@ function viewHand() {
     <div class="card-head" style="margin:0"><button class="back" data-action="close-hand">‹ Hands</button><span class="muted" style="font-size:13px">${esc(h.game || "")}${h.stakes ? " · " + esc(h.stakes) : ""}</span></div>
     <section class="card"><div class="card-head"><h3>Your notes</h3><span style="display:flex;gap:12px;align-items:baseline"><span class="muted" style="font-size:12.5px">${fmtDate(new Date(h.createdAt).toISOString().slice(0, 10), true)}</span><button class="linkbtn" data-action="edit-hand">Edit</button></span></div>
       <pre class="handtext">${cardify(esc(h.text))}</pre>
-      ${h.recorded ? `<div class="did"><span><span class="muted">Result:</span> <b class="${cls(h.net)}">${esc(outcomeLabel(h))}</b> <span class="muted">· pot ${esc((h.unit ?? "£") + N(h.pot))}</span></span></div>` : ""}
+      ${h.recorded ? `<div class="did"><span><span class="muted">Result:</span> <b>${esc(outcomeLabel(h))}</b> <span class="muted">· pot ${esc((h.unit ?? "£") + N(h.pot))}</span></span></div>` : ""}
       <div class="did"><span class="muted">${h.flagged ? "Marked for review" : "Not marked for review"}</span><button class="linkbtn" data-action="toggle-flag">${h.flagged ? "★ Unmark" : "☆ Mark"}</button></div>
       <div id="did-zone">${h.action
         ? `<div class="did"><span><span class="muted">What I did:</span> <b>${cardify(esc(h.action))}</b></span><button class="linkbtn" data-action="edit-action">Edit</button></div>`
@@ -1147,7 +1147,7 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape" && !$("#sheet").hidden) closeSheet();
 });
 
-const APP_VERSION = "13";
+const APP_VERSION = "14";
 // ---------- on-device storage (encrypted with your password) ----------
 // Same small API the page used with Claude's database. Data is kept in memory while
 // unlocked and saved to localStorage encrypted with AES-GCM, keyed from the password.
@@ -1557,21 +1557,7 @@ function rebuild(prev, cfg) {
   return { same, missed };
 }
 // money
-function heroNet() {
-  const h = P(R.hero.pos), others = R.players.filter(p => p !== h);
-  const maxO = Math.max(0, ...others.map(p => p.inv));
-  const win = others.reduce((a, p) => a + Math.min(p.inv, h.inv), 0), risk = Math.min(h.inv, maxO);
-  const o = R.result.outcome;
-  return Math.round((o === "won" ? win : o === "split" ? (win - risk) / 2 : -risk) * 100) / 100;
-}
-function outcomeLabel(h) {
-  const u = h.unit ?? "£", amt = v => u + N(Math.abs(v));
-  if (h.outcome === "won") return `Won ${amt(h.net)}`;
-  if (h.outcome === "lost") return `Lost ${amt(h.net)}`;
-  if (h.outcome === "split") return "Split pot";
-  if (h.outcome === "folded") return h.net < 0 ? `Folded · −${amt(h.net)}` : "Folded";
-  return "";
-}
+function outcomeLabel(h) { return { won: "Won", lost: "Lost", split: "Split pot", folded: "Folded" }[h.outcome] || ""; }
 // notes in the same shorthand used for typed hands
 function recText() {
   const c = R.cfg, h = P(R.hero.pos), nm = pos => pos === R.hero.pos ? "H" : pos;
@@ -1604,15 +1590,14 @@ function showdownText() {
 }
 function saveRec(next) {
   if (!R.result.outcome) { R.ui.err = "Choose whether you won, lost or split."; return renderRec(); }
-  const c = R.cfg, net = heroNet();
+  const c = R.cfg;
   const data = { text: recText(), game: c.game, stakes: isCash() ? `£${N(c.sb)}/${N(c.bb)}` : `${N(c.sb)}/${N(c.bb)}`, action: heroDid(),
     context: [showdownText(), (R.result.note || "").trim()].filter(Boolean).join(". "),
-    createdAt: Date.now(), status: "saved", recorded: true, flagged: !!R.result.flag, outcome: R.result.outcome, net, pot: Math.round(potTotal() * 100) / 100, unit: isCash() ? "£" : "" };
+    createdAt: Date.now(), status: "saved", recorded: true, flagged: !!R.result.flag, outcome: R.result.outcome, pot: Math.round(potTotal() * 100) / 100, unit: isCash() ? "£" : "" };
   handsDb.add(data);
-  const cfg = { ...c, stack: Math.max(0, Math.round((P(R.hero.pos).stack + net) * 100) / 100) };
-  saveCfg(cfg); RH = [];
+  const cfg = { ...c }; saveCfg(cfg); RH = [];
   R = { step: "setup", cfg, ui: {} }; saveDraft();
-  toast(`Hand saved · ${outcomeLabel(data)}`);
+  toast("Hand saved");
   if (next) renderRec(); else closeRec();
 }
 // screens
@@ -1635,17 +1620,19 @@ function renderRec() {
 }
 function recSetup() {
   const c = R.cfg;
-  const sum = `${c.game === "Cash" ? `£${N(c.sb)}/${N(c.bb)}` : `Blinds ${N(c.sb)}/${N(c.bb)}${+c.ante ? ` · ante ${N(c.ante)}` : ""}`} · ${c.seats}-handed · You ${A(c.stack)} · Others ${A(c.others)}`;
+  const sum = `${c.game === "Cash" ? `£${N(c.sb)}/${N(c.bb)}` : `Blinds ${N(c.sb)}/${N(c.bb)}${+c.ante ? ` · ante ${N(c.ante)}` : ""}`} · ${c.seats}-handed`;
   const sp = c.seats >= 4 ? POSITIONS[c.seats][0] : null;
   return `<div class="stack">
     <div class="rec-sum"><span>${sum}</span><button class="linkbtn" data-r="cfg">${R.showCfg ? "Done" : "Change"}</button></div>
     ${R.showCfg ? recCfgForm() : ""}
+    <div class="grid2"><label class="field"><span>Your stack</span><div class="${c.game === "Cash" ? "money" : ""}"><input class="input num" inputmode="decimal" data-cfg="stack" value="${c.stack}"></div></label>
+      <label class="field"><span>Others' stacks</span><div class="${c.game === "Cash" ? "money" : ""}"><input class="input num" inputmode="decimal" data-cfg="others" value="${c.others}"></div></label></div>
     ${sp ? `<button class="rbtn ${c.straddleOn ? "on" : ""}" data-r="strtoggle">${c.straddleOn ? "✓ Straddle on" : "Straddle off"}<small>${sp} straddles ${A(strAmt(c))} · tap to turn ${c.straddleOn ? "off" : "on"}</small></button>` : ""}
     <h3>Your position</h3>
     <div class="pos-grid">${POSITIONS[c.seats].map(p => `<button class="rbtn ${R.prev?.hero.pos === p ? "pri" : ""}" data-r="pos" data-v="${p}">${p}</button>`).join("")}</div>
     ${R.prev ? `<div class="notice">You're editing the start of this hand. Change anything above, then tap <b>${R.prev.hero.pos}</b> to carry on with your cards and actions kept, or pick a different position to start the hand again.
       <div class="btnrow" style="margin-top:10px"><button class="btn" data-r="backtohand">Back to the hand, no changes</button></div></div>` : ""}
-    <p class="foot" style="margin:0">Tap your position to start. These settings are remembered, and your stack updates after each hand you save.</p></div>`;
+    <p class="foot" style="margin:0">Stacks are only used to describe the hand. Others' stacks is a starting guess: tap any player's stack while recording to change it. Then tap your position to start.</p></div>`;
 }
 function recCfgForm() {
   const c = R.cfg, stakes = HSTORE.stakes || [];
@@ -1657,9 +1644,7 @@ function recCfgForm() {
     ${c.game === "Tournament" ? `<label class="field"><span>BB ante <span style="font-weight:400">(0 if none)</span></span><input class="input num" inputmode="decimal" data-cfg="ante" value="${c.ante || 0}"></label>` : ""}
     <label class="field"><span>Straddle at ${esc(stakeKey(c))} <span style="font-weight:400">(saved for these stakes)</span></span><input class="input num" inputmode="decimal" data-cfg="straddle" value="${N(strAmt(c))}"></label>
     <div class="field"><span>Players at the table</span><div class="stepper"><button type="button" class="rbtn" data-r="seats" data-v="-1">−</button><b>${c.seats}</b><button type="button" class="rbtn" data-r="seats" data-v="1">+</button></div></div>
-    <div class="grid2"><label class="field"><span>Your stack</span><input class="input num" inputmode="decimal" data-cfg="stack" value="${c.stack}"></label>
-      <label class="field"><span>Others' stacks</span><input class="input num" inputmode="decimal" data-cfg="others" value="${c.others}"></label></div>
-    <p class="foot" style="margin:0">Others' stacks is a starting guess. Tap any player's stack while recording to change it.</p></div>`;
+    </div>`;
 }
 function picker(title, cards, n, extra = "") {
   const used = usedCards(), r = R.pick.rank;
@@ -1727,13 +1712,11 @@ function recAct() {
 function recResult() {
   const h = P(R.hero.pos), opp = live().filter(p => p !== h), o = R.result.outcome;
   const fixed = h.folded || live().length === 1;
-  const net = o ? heroNet() : null;
   const t = R.pick.target;
   return `<div class="stack">
     <div class="rec-street"><b>Result</b>${R.board.length ? `<span>${R.board.map(cardHtml).join("")}</span>` : ""}<span class="muted">Pot ${A(potTotal())}</span></div>
     ${fixed ? `<div class="actor me"><b>${h.folded ? "You folded" : "Everyone folded · you won"}</b></div>`
       : `<div class="act-grid" style="grid-template-columns:repeat(3,1fr)">${[["won", "Won"], ["lost", "Lost"], ["split", "Split"]].map(([v, l]) => `<button class="rbtn ${o === v ? "on" : ""}" data-r="out" data-v="${v}">${l}</button>`).join("")}</div>`}
-    ${o ? `<div class="preview"><div><div class="eyebrow">This hand</div><b class="num ${cls(net)}">${net === 0 ? "£0" : (net > 0 ? "+" : "−") + A(Math.abs(net))}</b></div><div style="text-align:right"><div class="eyebrow">Your stack now</div><b class="num">${A(h.stack + net)}</b></div></div>` : ""}
     <div class="err">${esc(R.ui.err || "")}</div>
     ${(h.folded ? live() : opp).length ? `<h3>Shown cards <span class="muted" style="font-weight:500">· optional</span></h3>
       ${(h.folded ? live() : opp).map(p => `<div class="did" style="margin:0"><span><b>${p.pos}</b> ${p.shown.map(cardHtml).join("")}</span>
