@@ -112,6 +112,8 @@ body:not(.mode-hands) .hands-only{display:none!important}
 .stepper .rbtn{width:56px}
 .stepper b{font-family:var(--f-display);font-size:22px;min-width:26px;text-align:center}
 .rec-discard{display:block;margin:22px auto 0;color:var(--muted)}
+.plview{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.masked{color:var(--muted)!important;letter-spacing:.04em}
 .sr-file{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
 .iconbtn{background:var(--surface);border:1px solid var(--line);border-radius:11px;width:38px;height:38px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted)}
 .iconbtn svg{width:20px;height:20px}
@@ -553,8 +555,8 @@ function viewHome() {
   const all = sorted(), st = stats(all), rm = runningMap();
   const recent = [...all].reverse().slice(0, 5);
   return `<div class="stack">
-    <section class="hero"><div class="eyebrow">Total profit / loss</div>
-      <div class="big num ${cls(st.pl)}">${money(st.pl)}</div>
+    <section class="hero"><div class="plview"><div class="eyebrow">Total profit / loss</div>${plButton()}</div>
+      <div class="big num ${S.showPL ? cls(st.pl) : "masked"}">${S.showPL ? money(st.pl) : "£•••••"}</div>
       <div class="kpis num">
         <div class="kpi"><b>${st.n}</b><span>sessions</span></div>
         <div class="kpi"><b>${hrs(st.hours)}</b><span>played</span></div>
@@ -704,7 +706,7 @@ function viewStats() {
     <h2>Stats</h2>
     <div class="seg">${b("overall", "Overall")}${b("cash", "Cash")}${b("tourn", "Tournament")}</div>
     <div class="metrics">
-      <div class="metric wide"><span>Total profit / loss</span><b class="num ${cls(st.pl)}">${money(st.pl)}</b></div>
+      <div class="metric wide"><div class="plview"><span>Total profit / loss</span>${plButton()}</div><b class="num ${S.showPL ? cls(st.pl) : "masked"}">${S.showPL ? money(st.pl) : "£•••••"}</b></div>
       ${M("Total sessions", st.n)}${M("Winning sessions", st.wins)}
       ${M("Win rate", pct(st.winRate))}${M("ROI", pct(st.roi), cls(st.roi))}
       ${M("Biggest win", money(st.best), cls(st.best))}${M("Biggest loss", money(st.worst), cls(st.worst))}
@@ -1083,6 +1085,11 @@ document.addEventListener("click", async e => {
   }
   if (a === "remove-venue") { const f = t.closest("form"); STORE.venues[f.dataset.type] = (STORE.venues[f.dataset.type] || []).filter(n => n !== f.dataset.name); persist(false); openSheet(venuesSheet()); return; }
   if (a === "lock-now") { lock(); return; }
+  if (a === "view-pl") { revealPL(); return; }
+  if (a === "fid-setup") { faceIdSetup(true); return; }
+  if (a === "fid-skip") { try { localStorage.setItem(FID_ASKED, "1"); } catch (er) {} closeSheet(); S.showPL = true; render(); return; }
+  if (a === "fid-on") { faceIdSetup(false); return; }
+  if (a === "fid-off") { try { localStorage.removeItem(FID_KEY); } catch (er) {} openSheet(settingsSheet()); toast("Face ID turned off"); return; }
   if (a === "change-pw") { openSheet(pwSheet()); return; }
   if (a === "backup") { backup(); return; }
   if (a === "ask-delete-hand") { $("#hand-confirm").innerHTML = `<div class="confirm"><b>Delete this hand and its review?</b><div class="btnrow" style="margin-top:10px"><button class="btn" data-action="keep-hand">Keep it</button><button class="btn danger solid" data-action="delete-hand">Delete</button></div></div>`; return; }
@@ -1147,7 +1154,7 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape" && !$("#sheet").hidden) closeSheet();
 });
 
-const APP_VERSION = "14";
+const APP_VERSION = "15";
 // ---------- on-device storage (encrypted with your password) ----------
 // Same small API the page used with Claude's database. Data is kept in memory while
 // unlocked and saved to localStorage encrypted with AES-GCM, keyed from the password.
@@ -1332,7 +1339,7 @@ document.addEventListener("click", e => {
   if (a === "erase-vault") { localStorage.removeItem(VAULT_KEY); localStorage.removeItem(OLD_KEY); showLock("setup"); }
 }, true);
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) hiddenAt = Date.now();
+  if (document.hidden) { hiddenAt = Date.now(); if (S.showPL) { S.showPL = false; render(); } }
   else if (hiddenAt && Date.now() - hiddenAt > LOCK_AFTER_MS && STORE) lock();
 });
 
@@ -1346,6 +1353,9 @@ function settingsSheet() {
     <button class="btn primary block" data-action="backup">Back up to Files or iCloud</button>
     <label class="btn block" for="restore-file">Restore from a backup file</label>
     <input type="file" id="restore-file" class="sr-file" accept=".json,application/json">
+    ${S.fidAvail ? `<h3 style="margin-top:8px">Face ID</h3>
+    <div class="did" style="margin:0"><span class="muted">${fidOn() ? "Face ID is needed to view your total P&amp;L." : "Your total P&amp;L shows without Face ID."}</span>
+      <button class="linkbtn" data-action="${fidOn() ? "fid-off" : "fid-on"}">${fidOn() ? "Turn off" : "Turn on"}</button></div>` : ""}
     <h3 style="margin-top:8px">Password</h3>
     <div class="btnrow" style="margin:0"><button class="btn" data-action="change-pw">Change password</button><button class="btn" data-action="lock-now">Lock now</button></div>
     <p class="foot">App version ${APP_VERSION}</p>
@@ -1795,6 +1805,46 @@ $("#rec").addEventListener("change", e => { if (e.target.name === "rgame") { R.c
 
 
 // ---------- boot ----------
+// ---------- Face ID for viewing your total ----------
+// Uses a passkey on this iPhone so the system asks for Face ID before the total is shown.
+// Nothing is sent anywhere; it only controls what's shown on screen.
+const FID_KEY = "pst.faceid", FID_ASKED = "pst.faceid.asked";
+S.showPL = false; S.fidAvail = false;
+try { PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().then(v => { S.fidAvail = !!v; }).catch(() => {}); } catch (e) {}
+function fidOn() { try { return !!localStorage.getItem(FID_KEY); } catch (e) { return false; } }
+const plButton = () => `<button class="btn small" data-action="view-pl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>${S.showPL ? "Hide" : "View"}</button>`;
+async function revealPL() {
+  if (S.showPL) { S.showPL = false; return render(); }
+  if (fidOn()) {
+    try {
+      const a = await navigator.credentials.get({ publicKey: { challenge: crypto.getRandomValues(new Uint8Array(32)),
+        allowCredentials: [{ type: "public-key", id: unb64(localStorage.getItem(FID_KEY)) }], userVerification: "required", timeout: 60000 } });
+      const verified = new Uint8Array(a.response.authenticatorData)[32] & 0x04;   // the "user verified" flag
+      if (verified) { S.showPL = true; render(); } else toast("Face ID didn't confirm it's you.");
+    } catch (e) { toast(e?.name === "NotAllowedError" ? "Face ID was cancelled." : "Face ID isn't available right now."); }
+    return;
+  }
+  let asked = false; try { asked = !!localStorage.getItem(FID_ASKED); } catch (e) {}
+  if (S.fidAvail && !asked) return openSheet(`<div class="sheet-head"><h2>Use Face ID?</h2><button class="x" data-action="close-sheet" aria-label="Close">×</button></div>
+    <div class="stack"><p class="muted" style="margin:0">Ask for Face ID every time you view your total profit / loss. Your iPhone will offer to save a passkey for Poker Tracker. That's what lets it use Face ID here.</p>
+    <button class="btn primary block" data-action="fid-setup">Set up Face ID</button><button class="btn block" data-action="fid-skip">Not now, just show it</button>
+    <p class="foot">You can change this later under Backup &amp; restore.</p></div>`);
+  S.showPL = true; render();
+}
+async function faceIdSetup(reveal) {
+  try {
+    const cred = await navigator.credentials.create({ publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)), rp: { name: "Poker Tracker" },
+      user: { id: crypto.getRandomValues(new Uint8Array(16)), name: "Poker Tracker", displayName: "Poker Tracker" },
+      pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
+      authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required", residentKey: "preferred" },
+      timeout: 60000, attestation: "none" } });
+    localStorage.setItem(FID_KEY, b64(cred.rawId)); localStorage.setItem(FID_ASKED, "1");
+    closeSheet(); toast("Face ID is on");
+    if (reveal) { S.showPL = true; render(); } else openSheet(settingsSheet());
+  } catch (e) { toast(e?.name === "NotAllowedError" ? "Face ID setup was cancelled." : "Couldn't set up Face ID on this device."); }
+}
+
 S.db = localDb;
 sync();
 showLock(readVault() ? "unlock" : "setup");
